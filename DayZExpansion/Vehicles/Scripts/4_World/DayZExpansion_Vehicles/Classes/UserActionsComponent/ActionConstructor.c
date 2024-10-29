@@ -25,8 +25,6 @@ modded class ActionConstructor
 		#ifdef EXPANSION_VEHICLE_TOWING
 		actions.Insert( ExpansionActionConnectTow );
 		actions.Insert( ExpansionActionDisconnectTow );
-		actions.Insert( ExpansionActionVehicleConnectTow );
-		actions.Insert( ExpansionActionVehicleDisconnectTow );
 		#endif
 		
 		actions.Insert( ExpansionActionSwitchGear );

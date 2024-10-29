@@ -1030,10 +1030,73 @@ modded class ExpansionVehicle
 		return false;
 	}
 
+	int NumberTowConnections()
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return 0;
+	}
+
+	bool CanConnectTow(notnull ExpansionVehicle other)
+	{
+		if (!IsBoat() && other.NumberTowConnections() > 0 && !other.IsTowing() && !other.IsLocked())
+			return true;
+
+		return false;
+	}
+
+	bool CanConnectTow(notnull ItemBase other)
+	{
+		if (!IsBoat() && other.Expansion_NumberTowConnections() > 0 && !other.Expansion_IsTowing())
+			return true;
+
+		return false;
+	}
+	
+	bool GetOverlappingTowConnection(vector towPosition, float towRadius, out int index)
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return false;
+	}
+
+	vector GetTowDirection()
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return vector.Zero;
+	}
+
+	float GetTowLength()
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return 0.0;
+	}
+
+	vector GetTowPosition()
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return vector.Zero;
+	}
+
+	vector GetTowPositionWS()
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return vector.Zero;
+	}
+
+	EntityAI GetTowedEntity()
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return null;
+	}
+
 	bool IsTowing()
 	{
 		EXError.Error(this, "NOT IMPLEMENTED");
 		return false;
+	}
+
+	void CreateTow(Object tow, int index)
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
 	}
 
 	void DestroyTow()

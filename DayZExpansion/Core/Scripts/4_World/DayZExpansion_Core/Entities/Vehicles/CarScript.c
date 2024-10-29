@@ -165,7 +165,7 @@ modded class CarScript
 	bool IsInSafeZone()
 	{
 		EXError.Error(this, "DEPRECATED, use GetExpansionVehicle().IsInSafeZone");
-		return Expansion_IsInSafeZone();
+		return m_ExpansionVehicle.IsInSafeZone();
 	}
 
 	// ------------------------------------------------------------
@@ -363,7 +363,7 @@ modded class CarScript
 
 	override void DamageCrew(float dmg)
 	{
-		if (Expansion_IsInSafeZone())
+		if (m_ExpansionVehicle.IsInSafeZone())
 			return;
 
 		super.DamageCrew(dmg);

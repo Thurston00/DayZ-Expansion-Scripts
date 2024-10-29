@@ -242,31 +242,6 @@ class ExpansionVehicleBaseBase : Transport
 		return 0.4;
 	}
 
-	bool Expansion_CanConnectTow(notnull Object other)
-	{
-#ifdef EXPANSIONTRACE
-		auto trace = CF_Trace_1(ExpansionTracing.VEHICLES, this, "Expansion_CanConnectTow").Add(other);
-#endif
-
-		ItemBase item;
-		ExpansionVehicleBase evs;
-		CarScript cs;
-		if (Class.CastTo(evs, other))
-		{
-			return evs.Expansion_NumberTowConnections() > 0 && evs.Expansion_IsCar() && !evs.Expansion_IsTowing() && !evs.IsLocked();
-		}
-		else if (Class.CastTo(cs, other))
-		{
-			return cs.Expansion_NumberTowConnections() > 0 && cs.Expansion_IsCar() && !cs.Expansion_IsTowing() && !cs.IsLocked();
-		}
-		else if (Class.CastTo(item, other))
-		{
-			return item.Expansion_NumberTowConnections() > 0 && !item.Expansion_IsTowing();
-		}
-
-		return false;
-	}
-
 	override void OnVariablesSynchronized()
 	{
 		super.OnVariablesSynchronized();

@@ -99,7 +99,7 @@ class eAIEntityTargetInformation: eAITargetInformation
 	override void OnHit(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
 	{
 		eAIBase ai;
-		if (Class.CastTo(ai, source.GetHierarchyRoot()))
+		if (source && Class.CastTo(ai, source.GetHierarchyRoot()))
 			ai.m_eAI_HitObject = m_Target;
 	}
 

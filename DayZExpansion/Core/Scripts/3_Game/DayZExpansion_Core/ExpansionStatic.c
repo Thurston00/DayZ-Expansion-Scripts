@@ -2346,9 +2346,11 @@ class ExpansionStatic: ExpansionStaticCore
 	 */
 	static bool IsInventoryLocked(EntityAI entity, out int lockType = 0, out EntityAI lockedEntity = null, bool checkParent = true)
 	{
-		if (entity.GetInventory().IsInventoryLocked())
+		auto inventory = entity.GetInventory();
+
+		if (inventory && inventory.IsInventoryLocked())
 		{
-			if (entity.GetInventory().IsInventoryLockedForLockType(HIDE_INV_FROM_SCRIPT))
+			if (inventory.IsInventoryLockedForLockType(HIDE_INV_FROM_SCRIPT))
 				lockType = HIDE_INV_FROM_SCRIPT;
 			else
 				lockType = LOCK_FROM_SCRIPT;

@@ -1,3 +1,44 @@
+class eAIShot
+{
+	float m_Time;
+	float m_ProcessedTime;
+	Weapon_Base m_Weapon;
+	vector m_Origin;
+	vector m_Direction;
+	Object m_HitObject;
+	vector m_HitPosition;
+	vector m_HitPositionMS;
+	int m_Component;
+	string m_Ammo;
+	float m_SpeedCoef;
+	float m_TravelTime;
+	float m_DamageCoef;
+
+	void eAIShot(Weapon_Base weapon, int muzzleIndex, vector origin, vector dir, Object hitObject, vector hitPosition, int component)
+	{
+		m_Time = GetGame().GetTickTime();
+		m_Weapon = weapon;
+		m_Origin = origin;
+		m_Direction = dir;
+		m_HitObject = hitObject;
+		m_HitPosition = hitPosition;
+		//m_HitPositionMS = hitObject.WorldToModel(hitPosition);
+		m_Component = component;
+		float ammoDamage;
+		weapon.GetCartridgeInfo(muzzleIndex, ammoDamage, m_Ammo);
+	}
+
+	string GetInfo()
+	{
+		string physInfo;
+
+		if (m_TravelTime)
+			physInfo = string.Format(" speedCoef=%1 travelTime=%2 dmgCoef=%3", m_SpeedCoef, m_TravelTime, m_DamageCoef);
+
+		return string.Format("%1 processed=%2 weapon=%3 hitObject=%4 hitPosition=%5 ammo=%6%7", this, m_ProcessedTime, m_Weapon, ExpansionStatic.GetDebugInfo(m_HitObject), m_HitPosition.ToString(), m_Ammo, physInfo);
+	}
+}
+
 class eAIDamageHandler
 {
 	static ref TStringArray s_HumanDmgZonesForRedirect = {
@@ -101,116 +142,92 @@ class eAIDamageHandler
 			eAIBase ai;
 			if (Class.CastTo(ai, sourcePlayer))
 			{
+			#ifdef DIAG_DEVELOPER
+				bool dbgObjEnabled = DayZPlayerImplement.s_Expansion_DebugObjects_Enabled;
+			#endif
+
+				vector aiPos = ai.GetPosition();
+				vector dir = vector.Direction(aiPos, modelPos);
+
 				if (damageType == DT_FIRE_ARM)
 				{
-					EntityAI hitscanEntity = ai.m_eAI_HitscanEntity;
-
+					//! Validate each shot.
 					//! Work-around for 1st shot on new entity hitting previously hit entity due to vanilla bug with Weapon::Fire
-					if (hitscanEntity)
+					//! Only redirect for root entity, children will be dealt with by parent dmg handler
+
+					float time = GetGame().GetTickTime();
+
+					bool isValid;
+
+					array<ref eAIShot> candidates = {};
+
+					foreach (eAIShot shot: ai.m_eAI_FiredShots)
 					{
-						if (hitscanEntity.GetHierarchyRoot() != rootEntity && rootEntity.IsDamageDestroyed() && !ai.m_eAI_QueuedShots)
+					#ifdef DIAG_DEVELOPER
+						EXTrace.Print(EXTrace.AI, ai, shot.GetInfo());
+					#endif
+
+						if (source == shot.m_Weapon && ammo == shot.m_Ammo)
 						{
-							//! Only redirect for root entity, children will be dealt with by parent dmg handler
+							//! Check if shot has not yet been processed or is within 5 ms of previous shot,
+							//! well below fastest fire rate of any firearm i.e. consecutive hit due to penetrating projectile
+							//! Only allow consecutive hits if correct entity
 
-							if (rootEntity == m_Entity)
-							{
-								//! Redirect damage to correct entity
+							vector toEntityDir = vector.Direction(shot.m_Origin, modelPos).Normalized();
+							float dot = vector.Dot(shot.m_Direction, toEntityDir);
 
-								//! Make sure that damage transfer to attachments works correctly
-								if (hitscanEntity.IsMan())
-								{
-									//! Do not redirect consecutive hits (within 2 ms, well below fastest fire rate of any firearm) to human target.
-									//! Consecutive hits can happen if entity is not wearing clothing items that could stop the projectile when it 
-									//! penetrates, so to avoid checking clothing of hitscan entity, we just ignore the subsequent hit.
-									//! An example of consecutive hits would be LeftArm followed by Torso from the same projectile if the shot 
-									//! originated from the left side of entity.
-
-									float time = GetGame().GetTickTime();
-
-									if (ai == m_LastSourceAI && time - m_LastHitTime < 0.002)
-									{
-									#ifdef DIAG_DEVELOPER
-										EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + ", ignoring dmg because last hit from " + ai + " was less than 2 ms ago");
-									#endif
-										return false;
-									}
-
-									m_LastHitTime = time;
-									m_LastSourceAI = ai;
-
-									if (!m_Entity.IsMan())
-									{
-										//! Do not redirect from non-human entity to Head or Brain, redirect to Torso instead
-										if (s_HumanDmgZonesForRedirect.Find(dmgZone) == -1)
-											dmgZone = "Torso";
-									}
-								}
-								else if (hitscanEntity.IsZombie())
-								{
-									if (!m_Entity.IsZombie())
-										dmgZone = "Head";
-								}
-								else if (hitscanEntity.IsAnimal())
-								{
-									if (!m_Entity.IsAnimal())
-										dmgZone = "Zone_Head";
-								}
-
-								vector aiPos = ai.GetPosition();
-								vector hitscanPos = hitscanEntity.GetPosition();
-
-								float distSq = vector.DistanceSq(aiPos, m_Entity.GetPosition());
-								float hitscanDistSq = vector.DistanceSq(aiPos, hitscanPos);
-
-								if (Math.AbsFloat(distSq - hitscanDistSq) > 4.0)
-								{
-									//! Recalculate speed coef if distance difference of entity and hitscan entity to AI is more than 2 m
-
-									Weapon_Base weapon;
-									if (Class.CastTo(weapon, source))
-									{
-										//! Since there's no way to get damageOverride in script, calculated coef may be too low.
-										//! Nothing we can do about it though.
-										float dmgCoef = weapon.eAI_CalculateProjectileDamageCoefAtPosition(ammo, hitscanPos);
-										if (dmgCoef < speedCoef)
-											speedCoef = dmgCoef;
-									}
-									else
-									{
-										//! Should not be possible, but just in case
-									#ifdef DIAG_DEVELOPER
-										EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " dist " + Math.Sqrt(distSq) + ", ignoring dmg because " + ExpansionStatic.GetHierarchyInfo(hitscanEntity) + " dist " + Math.Sqrt(hitscanDistSq) + " is too far and cannot determine AI weapon");
-									#endif
-										return false;
-									}
-								}
-
-							#ifdef DIAG_DEVELOPER
-								bool dbgObjEnabled = DayZPlayerImplement.s_Expansion_DebugObjects_Enabled;
-								DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = true;
-								vector dir = vector.Direction(aiPos, modelPos);
-								dir[1] = 0;
-								ai.Expansion_DebugObject(-1, modelPos, "ExpansionDebugNoticeMe_Red", dir);
-								dir = vector.Direction(aiPos, hitscanPos);
-								dir[1] = 0;
-								ai.Expansion_DebugObject(-2, hitscanPos, "ExpansionDebugNoticeMe", dir);
-								DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
-								EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " dist " + Math.Sqrt(distSq) + ", redirecting dmg to " + ExpansionStatic.GetHierarchyInfo(hitscanEntity) + " dist " + Math.Sqrt(hitscanDistSq) + " " + dmgZone + " " + speedCoef);
-							#endif
-
-								hitscanEntity.ProcessDirectDamage(damageType, source, dmgZone, ammo, modelPos, speedCoef);
-							}
 						#ifdef DIAG_DEVELOPER
-							else
-							{
-								EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + ", ignoring dmg");
-							}
+							EXTrace.Print(EXTrace.AI, ai, "eAIShot direction=" + shot.m_Direction + " toEntityDir=" + toEntityDir + " dot=" + dot);
 						#endif
 
-							return false;
+							if (rootEntity == shot.m_HitObject || dot >= 0.97)
+							{
+								if (!shot.m_ProcessedTime)
+									shot.m_ProcessedTime = time;
+
+								if (time - shot.m_ProcessedTime < 0.005)
+								{
+									isValid = true;
+									break;
+								}
+							}
+							else if (rootEntity == m_Entity && !shot.m_ProcessedTime)
+							{
+								//! Only redirect for root entity, children will be dealt with by parent dmg handler
+
+								candidates.Insert(shot);
+							}
 						}
 					}
+
+					if (!isValid)
+					{
+						foreach (eAIShot candidate: candidates)
+						{
+							float airFriction;
+							float distance;
+							float initSpeed;
+							candidate.m_DamageCoef = candidate.m_Weapon.eAI_CalculateProjectileDamageCoefAtPosition(candidate.m_Origin, ammo, candidate.m_HitPosition, 1.0, airFriction, distance, candidate.m_SpeedCoef, initSpeed);
+
+							candidate.m_TravelTime = candidate.m_Weapon.eAI_CalculateProjectileTravelTime(airFriction, distance, initSpeed);
+							float elapsed = time - candidate.m_Time;
+							float travelTimeRemaining = candidate.m_TravelTime - elapsed;
+
+							if (travelTimeRemaining > 0.05)
+								GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(CheckCandidate, travelTimeRemaining * 1000, false, candidate, ai, aiPos, modelPos, dir, travelTimeRemaining);
+							else if (CheckCandidate(candidate, ai, aiPos, modelPos, dir, travelTimeRemaining))
+								break;
+						}
+
+						return false;
+					}
 				}
+
+			#ifdef DIAG_DEVELOPER
+				ai.Expansion_DebugObject(-4, modelPos, "ExpansionDebugBox", Vector(dir[0], 0, dir[2]));
+
+				DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
+			#endif
 			}
 
 			float damageMultiplier = 1.0;
@@ -338,5 +355,77 @@ class eAIDamageHandler
 
 		m_ProcessDamage = true;
 		m_Entity.ProcessDirectDamage(damageType, source, dmgZone, ammo, modelPos, damageCoef);
+	}
+
+	bool CheckCandidate(notnull eAIShot candidate, eAIBase ai, vector aiPos, vector modelPos, vector dir, float travelTimeRemaining)
+	{
+	#ifdef DIAG_DEVELOPER
+		bool dbgObjEnabled = DayZPlayerImplement.s_Expansion_DebugObjects_Enabled;
+	#endif
+
+		if (candidate.m_ProcessedTime)
+			return false;
+
+		if (!candidate.m_HitObject)
+			return false;
+
+		vector minMax[2];
+		eAIShot match;
+
+		if (candidate.m_HitObject.GetCollisionBox(minMax))
+		{
+			//! Check if hit pos is within collision box of target entity at its current position
+			vector start = candidate.m_HitObject.WorldToModel(candidate.m_HitPosition);
+			float dist = Math.Min(minMax[1][0], minMax[1][2]) - Math.Min(minMax[0][0], minMax[0][2]) * 0.5;
+			vector end = candidate.m_HitObject.WorldToModel(candidate.m_HitPosition + candidate.m_Direction * dist);
+
+			if (Math3D.IntersectRayBox(start, end, minMax[0], minMax[1]) > -1)
+				match = candidate;
+		}
+
+	/*
+		//! Check if target is still at hit position (+/- 20 cm)
+		vector modelPosWS = candidate.m_HitObject.ModelToWorld(candidate.m_HitPositionMS);
+		if (vector.DistanceSq(candidate.m_HitPosition, modelPosWS) <= 0.04)
+			match = candidate;
+	*/
+	
+		if (match)
+		{
+			GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Remove(CheckCandidate);
+
+			string dmgZone = match.m_HitObject.GetDamageZoneNameByComponentIndex(match.m_Component);
+
+		#ifdef DIAG_DEVELOPER
+			vector hitEntityDir = vector.Direction(aiPos, match.m_HitPosition);
+
+			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = DayZPlayerImplement.s_eAI_DebugDamage;
+
+			ai.Expansion_DebugObject(-1, modelPos, "ExpansionDebugNoticeMe_Red", Vector(dir[0], 0, dir[2]));
+			ai.Expansion_DebugObject(-2, match.m_HitPosition, "ExpansionDebugNoticeMe", Vector(hitEntityDir[0], 0, hitEntityDir[2]));
+
+			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
+
+			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " dist " + dir.Length() + ", redirecting dmg to " + ExpansionStatic.GetDebugInfo(match.m_HitObject) + " dist " + hitEntityDir.Length() + " speedCoef=" + match.m_SpeedCoef + " travelTime=" + match.m_TravelTime + " remaining=" + travelTimeRemaining + " " + dmgZone + " damageCoef=" + match.m_DamageCoef);
+		#endif
+
+			match.m_HitObject.ProcessDirectDamage(DT_FIRE_ARM, match.m_Weapon, dmgZone, match.m_Ammo, match.m_HitPosition, match.m_DamageCoef);
+
+			return true;
+		}
+	#ifdef DIAG_DEVELOPER
+		else
+		{
+			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = DayZPlayerImplement.s_eAI_DebugDamage;
+
+			ai.Expansion_DebugObject(-3, modelPos - "0 1.5 0", "ExpansionDebugNoticeMe_Blue", Vector(dir[0], 0, dir[2]));
+
+			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
+
+			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + ", ignoring dmg");
+		}
+	#endif
+
+		return false;
 	}
 }

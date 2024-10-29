@@ -37,16 +37,14 @@ class ExpansionActionDisconnectTow : ActionInteractBase
 
 	override bool ActionCondition(PlayerBase player, ActionTarget target, ItemBase item)
 	{
-		HumanCommandVehicle vehCommand = player.GetCommand_Vehicle();
-
-		CarScript car;
-		if (vehCommand && Class.CastTo(car, vehCommand.GetTransport()))
+		auto vehicle = ExpansionVehicle.Get(player);
+		if (vehicle)
 		{
-			if (car.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
+			if (vehicle.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
 			{
-				m_IsWinch = car.IsHelicopter();
+				m_IsWinch = vehicle.IsHelicopter();
 
-				return car.Expansion_IsTowing();
+				return vehicle.IsTowing();
 			}
 		}
 		return false;
@@ -56,21 +54,19 @@ class ExpansionActionDisconnectTow : ActionInteractBase
 	{
 		super.OnStartServer(action_data);
 
-		HumanCommandVehicle vehCommand = action_data.m_Player.GetCommand_Vehicle();
-
-		CarScript car;
-		if (vehCommand && Class.CastTo(car, vehCommand.GetTransport()))
+		auto vehicle = ExpansionVehicle.Get(action_data.m_Player);
+		if (vehicle)
 		{
-			if (car.CrewMemberIndex(action_data.m_Player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
+			if (vehicle.CrewMemberIndex(action_data.m_Player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
 			{
+				vehicle.DestroyTow();
+
 				if (GetGame().IsMultiplayer() && GetExpansionSettings().GetLog().VehicleTowing)
 				{
-					string msg = "[VehicleTowing] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " untowed " + car.Expansion_GetTowedEntity().GetType() + " (id=" + ExpansionStatic.GetPersistentIDString(car.Expansion_GetTowedEntity()) + " pos=" + car.GetPosition();
-					msg += " with " + car.GetType() + " (id=" + car.GetVehiclePersistentIDString() + " pos=" + car.GetPosition() + ")";
+					string msg = "[VehicleTowing] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " untowed " + vehicle.GetTowedEntity().GetType() + " (id=" + ExpansionStatic.GetPersistentIDString(vehicle.GetTowedEntity()) + " pos=" + vehicle.GetTowedEntity().GetPosition();
+					msg += " with " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")";
 					GetExpansionSettings().GetLog().PrintLog(msg);
 				}
-
-				car.Expansion_DestroyTow();
 			}
 		}
 	}

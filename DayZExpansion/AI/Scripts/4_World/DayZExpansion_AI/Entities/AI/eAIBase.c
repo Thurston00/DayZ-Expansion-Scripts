@@ -67,7 +67,8 @@ class eAIBase: PlayerBase
 	ref eAINoiseTargetInformation m_eAI_NoiseTargetInfo = new eAINoiseTargetInformation();
 	int m_eAI_NoiseTarget;
 	private bool m_eAI_HasLOS;
-	EntityAI m_eAI_HitscanEntity;
+	ref array<ref eAIShot> m_eAI_FiredShots = {};
+	float m_eAI_PurgeFiredShotsTick;
 	Object m_eAI_HitObject;
 
 	// Command handling
@@ -2886,6 +2887,7 @@ class eAIBase: PlayerBase
 		return cmd;
 	}
 
+/*
 	eAICommandVehicle GetCommand_VehicleAI()
 	{
 		return eAICommandVehicle.Cast(GetCommand_Script());
@@ -2899,8 +2901,8 @@ class eAIBase: PlayerBase
 		m_eAI_Command = cmd;
 		return cmd;
 	}
+*/
 
-/*
 	HumanCommandVehicle GetCommand_VehicleAI()
 	{
 		return GetCommand_Vehicle();
@@ -2909,7 +2911,6 @@ class eAIBase: PlayerBase
 	{
 		return StartCommand_Vehicle(vehicle, seatIdx, seat_anim, fromUnconscious);
 	}
-*/
 
 	void Notify_Transport(Transport vehicle, int seatIndex)
 	{
@@ -4342,7 +4343,7 @@ class eAIBase: PlayerBase
 
 	bool eAI_HandleAiming(float pDt, bool hasLOS = false)
 	{
-		eAICommandVehicle vehCmd = GetCommand_VehicleAI();
+		auto vehCmd = GetCommand_VehicleAI();
 		if (vehCmd && (vehCmd.IsGettingIn() || vehCmd.IsGettingOut()))
 			return false;
 
@@ -4444,9 +4445,12 @@ class eAIBase: PlayerBase
 		//{
 		//	car.Control(pDt);
 		// }
+
+		int i;
+
 #ifdef DIAG_DEVELOPER
 #ifndef SERVER
-		for (int i = m_Expansion_DebugShapes.Count() - 1; i >= 0; i--)
+		for (i = m_Expansion_DebugShapes.Count() - 1; i >= 0; i--)
 			m_Expansion_DebugShapes[i].Destroy();
 		m_Expansion_DebugShapes.Clear();
 #endif
@@ -4633,6 +4637,29 @@ class eAIBase: PlayerBase
 		UpdateDelete();
 
 		OnScheduledTick(pDt);
+
+		m_eAI_PurgeFiredShotsTick += pDt;
+		if (m_eAI_PurgeFiredShotsTick > 1.0)
+		{
+			m_eAI_PurgeFiredShotsTick = 0;
+
+			float time = GetGame().GetTickTime();
+
+			for (i = m_eAI_FiredShots.Count() - 1; i >= 0; i--)
+			{
+				eAIShot shot = m_eAI_FiredShots[i];
+				float elpased = time - shot.m_Time;
+				//! If shot has been processed, flight time exceeds 6 seconds (DayZ max) or expected travel time is exceeded by 50%, remove shot
+				if (shot.m_ProcessedTime || (elpased > 6.0) || (shot.m_TravelTime && elpased > shot.m_TravelTime * 1.5))
+				{
+				#ifdef DIAG_DEVELOPER
+					if (!shot.m_ProcessedTime)
+						EXTrace.Print(EXTrace.AI, this, "Discarding unprocessed " + shot.GetInfo());
+				#endif
+					m_eAI_FiredShots.Remove(i);
+				}
+			}
+		}
 
 		//! Do FSM update only after current command has been running for at least one command handler tick, else initial gun holding will look scuffed
 		if (m_FSM && m_eAI_CommandTime > pDt)
@@ -5109,7 +5136,7 @@ class eAIBase: PlayerBase
 		bool isDir;
 		bool isDirWS;
 
-		eAICommandVehicle hcv = GetCommand_VehicleAI();
+		auto hcv = GetCommand_VehicleAI();
 		if (speed > 0 || hcv)
 		{
 			isDir = true;
@@ -5323,8 +5350,6 @@ class eAIBase: PlayerBase
 		if (!GetGame())
 			return false;
 
-		m_eAI_HitscanEntity = null;
-
 		if (!m_eAI_Targets.Count())
 		{
 			return false;
@@ -5475,12 +5500,10 @@ class eAIBase: PlayerBase
 			{
 				//! Right on target
 				state.m_LOS = true;
-				m_eAI_HitscanEntity = hitEntity;
 			}
 			else if (obj == parent)
 			{
 				state.m_LOS = true;
-				//! @note not setting hitscan entity here because we want the actual projectile to penetrate
 			}
 			else
 			{
@@ -5500,13 +5523,11 @@ class eAIBase: PlayerBase
 				{
 					//! If object is zombie or animal but not the target or its parent, we don't care if they get shot when they are in the way
 					state.m_LOS = true;
-					m_eAI_HitscanEntity = hitEntity;
 				}
 				else if (((obj.IsTree() || obj.IsBush()) && contactToTargetDistSq <= 4 && state.m_ThreatLevelActive >= 0.4) || contactToTargetDistSq <= 0.0625)
 				{
 					//! If object is tree/bush but not the target or its parent, we don't care if they get shot when they are in the way
 					state.m_LOS = true;
-					//! @note not setting hitscan entity here because we want the actual projectile to penetrate
 				}
 			}
 

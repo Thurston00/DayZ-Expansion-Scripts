@@ -161,9 +161,43 @@ modded class BoatScript
 	{
 	}
 
+	int Expansion_NumberTowConnections()
+	{
+		return 0;
+	}
+
+	bool Expansion_GetOverlappingTowConnection(vector towPosition, float towRadius, out int index)
+	{
+		return false;
+	}
+
+	vector Expansion_GetTowDirection()
+	{
+		return vector.Zero;
+	}
+
+	float Expansion_GetTowLength()
+	{
+		return 0.0;
+	}
+
+	vector Expansion_GetTowPosition()
+	{
+		return vector.Zero;
+	}
+
+	EntityAI Expansion_GetTowedEntity()
+	{
+		return null;
+	}
+
 	bool Expansion_IsTowing()
 	{
 		return false;
+	}
+
+	void Expansion_CreateTow(Object tow, int index)
+	{
 	}
 
 	void Expansion_DestroyTow()

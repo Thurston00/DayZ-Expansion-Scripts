@@ -12,13 +12,13 @@
 
 class ExpansionActionConnectTowReciveData : ActionReciveData
 {
-	Object m_Car;
+	Object m_ToTow;
 	int m_Index;
 }
 
 class ExpansionActionConnectTowData : ActionData
 {
-	Object m_Car;
+	Object m_ToTow;
 	int m_Index;
 };
 
@@ -60,7 +60,7 @@ class ExpansionActionConnectTow : ActionInteractBase
 		ExpansionActionConnectTowData poActionData;
 		poActionData = ExpansionActionConnectTowData.Cast(action_data);
 
-		ctx.Write(poActionData.m_Car);
+		ctx.Write(poActionData.m_ToTow);
 	}
 
 	override bool ReadFromContext(ParamsReadContext ctx, out ActionReciveData action_recive_data)
@@ -74,7 +74,7 @@ class ExpansionActionConnectTow : ActionInteractBase
 
 		ExpansionActionConnectTowReciveData action_data_po = ExpansionActionConnectTowReciveData.Cast(action_recive_data);
 
-		if (!ctx.Read(action_data_po.m_Car))
+		if (!ctx.Read(action_data_po.m_ToTow))
 			return false;
 
 		return true;
@@ -87,7 +87,7 @@ class ExpansionActionConnectTow : ActionInteractBase
 		ExpansionActionConnectTowReciveData recive_data_po = ExpansionActionConnectTowReciveData.Cast(action_recive_data);
 		ExpansionActionConnectTowData action_data_po = ExpansionActionConnectTowData.Cast(action_data);
 
-		action_data_po.m_Car = recive_data_po.m_Car;
+		action_data_po.m_ToTow = recive_data_po.m_ToTow;
 	}
 
 	override bool SetupAction(PlayerBase player, ActionTarget target, ItemBase item, out ActionData action_data, Param extra_data = NULL)
@@ -95,7 +95,7 @@ class ExpansionActionConnectTow : ActionInteractBase
 		if (super.SetupAction(player, target, item, action_data, extra_data))
 		{
 			ExpansionActionConnectTowData action_data_b = ExpansionActionConnectTowData.Cast(action_data);
-			return GetCarToTow(player, action_data_b.m_Car, action_data_b.m_Index);
+			return GetObjectToTow(player, action_data_b.m_ToTow, action_data_b.m_Index);
 		}
 
 		return false;
@@ -103,61 +103,64 @@ class ExpansionActionConnectTow : ActionInteractBase
 
 	bool GetCarToTow(PlayerBase player, out Object out_car, out int out_index)
 	{
+		EXError.Error(this, "DEPRECATED");
+		return GetObjectToTow(player, out_car, out_index);
+	}
+
+	bool GetObjectToTow(PlayerBase player, out Object toTow, out int out_index)
+	{
 		int i;
 		Human crew;
 		bool hasCrew;
 
-		auto vehCommand = player.GetCommand_Vehicle();
-
-		CarScript car;
-		if (vehCommand && Class.CastTo(car, vehCommand.GetTransport()))
+		auto vehicle = ExpansionVehicle.Get(player);
+		if (vehicle)
 		{
-			if (car.Expansion_IsTowing())
+			if (vehicle.IsTowing())
 				return false;
 
-			if (car.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
+			if (vehicle.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
 			{
 				array<Object> excluded = new array<Object>;
 				array<Object> collided = new array<Object>;
-				excluded.Insert(car);
+				excluded.Insert(vehicle.GetEntity());
 				excluded.Insert(player);
 
-				vector towPosition = car.ModelToWorld(car.Expansion_GetTowPosition());
-				float towRadius = car.Expansion_GetTowLength();
+				vector towPosition = vehicle.GetTowPositionWS();
+				float towRadius = vehicle.GetTowLength();
 
-				GetGame().IsBoxColliding(towPosition, car.Expansion_GetTowDirection(), "5 5 5", excluded, collided);
+				GetGame().IsBoxColliding(towPosition, vehicle.GetTowDirection(), "5 5 5", excluded, collided);
 				
 				//Shape.CreateSphere(0xFF00FF00, ShapeFlags.NOZBUFFER | ShapeFlags.TRANSP | ShapeFlags.ONCE, towPosition, towRadius);
 
 				foreach (Object o : collided)
 				{
-					CarScript other_car;
-					if (Class.CastTo(other_car, o))
+					auto otherVehicle = ExpansionVehicle.Get(o);
+					ItemBase other;
+					if (otherVehicle)
 					{
 						// while we technically could allow towing a vehicle itself towing another one
 						// dayz will get more and more fucky so we limit it to only pairs
-						if (!other_car.Expansion_IsTowing() && car.Expansion_CanConnectTow(other_car) && !other_car.Expansion_GetTowedEntity())
+						if (!otherVehicle.IsTowing() && vehicle.CanConnectTow(otherVehicle) && !otherVehicle.GetTowedEntity())
 						{
-							m_IsWinch = car.Expansion_IsHelicopter();
+							m_IsWinch = vehicle.IsHelicopter();
 
-							if (other_car.Expansion_GetOverlappingTowConnection(towPosition, towRadius, out_index))
+							if (otherVehicle.GetOverlappingTowConnection(towPosition, towRadius, out_index))
 							{
-								out_car = other_car;
+								toTow = o;
 								return true;
 							}
 						}
 					}
-
-					ItemBase other_vehicle;
-					if (Class.CastTo(other_vehicle, o))
+					else if (Class.CastTo(other, o))
 					{
-						if (!other_vehicle.Expansion_IsTowing() && car.Expansion_CanConnectTow(other_vehicle))
+						if (!other.Expansion_IsTowing() && vehicle.CanConnectTow(other))
 						{
-							m_IsWinch = car.Expansion_IsHelicopter();
+							m_IsWinch = vehicle.IsHelicopter();
 
-							if (other_vehicle.Expansion_GetOverlappingTowConnection(towPosition, towRadius, out_index))
+							if (other.Expansion_GetOverlappingTowConnection(towPosition, towRadius, out_index))
 							{
-								out_car = other_vehicle;
+								toTow = o;
 								return true;
 							}
 						}
@@ -178,9 +181,9 @@ class ExpansionActionConnectTow : ActionInteractBase
 		if (!super.ActionCondition(player, target, item))
 			return false;
 
-		Object car;
+		Object toTow;
 		int index;
-		return GetCarToTow(player, car, index);
+		return GetObjectToTow(player, toTow, index);
 	}
 
 	override void OnStartServer(ActionData action_data)
@@ -189,19 +192,17 @@ class ExpansionActionConnectTow : ActionInteractBase
 
 		ExpansionActionConnectTowData action_data_b = ExpansionActionConnectTowData.Cast(action_data);
 
-		HumanCommandVehicle vehCommand = action_data_b.m_Player.GetCommand_Vehicle();
-
-		CarScript car;
-		if (vehCommand && Class.CastTo(car, vehCommand.GetTransport()))
+		auto vehicle = ExpansionVehicle.Get(action_data_b.m_Player);
+		if (vehicle)
 		{
-			if (car.CrewMemberIndex(action_data_b.m_Player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
+			if (vehicle.CrewMemberIndex(action_data_b.m_Player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
 			{
-				car.Expansion_CreateTow(action_data_b.m_Car, action_data_b.m_Index);
+				vehicle.CreateTow(action_data_b.m_ToTow, action_data_b.m_Index);
 
 				if (GetGame().IsMultiplayer() && GetExpansionSettings().GetLog().VehicleTowing)
 				{
-					string msg = "[VehicleTowing] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " towed " + action_data_b.m_Car.GetType() + " (id=" + ExpansionStatic.GetPersistentIDString(EntityAI.Cast(action_data_b.m_Car)) + " pos=" + action_data_b.m_Car.GetPosition();
-					msg += " with " + car.GetType() + " (id=" + car.GetVehiclePersistentIDString() + " pos=" + car.GetPosition() + ")";
+					string msg = "[VehicleTowing] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " towed " + action_data_b.m_ToTow.GetType() + " (id=" + ExpansionStatic.GetPersistentIDString(EntityAI.Cast(action_data_b.m_ToTow)) + " pos=" + action_data_b.m_ToTow.GetPosition();
+					msg += " with " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")";
 					GetExpansionSettings().GetLog().PrintLog(msg);
 				}
 			}

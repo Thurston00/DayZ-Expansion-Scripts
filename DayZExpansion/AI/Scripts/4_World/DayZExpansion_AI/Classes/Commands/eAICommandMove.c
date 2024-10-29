@@ -596,7 +596,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			}
 			else
 			{
-				if (m_Stance == 1 || m_MovementSpeed < 2.0)  //! Crouch or walk
+				if (m_Stance == 1 || m_MovementSpeed < 2.0 || m_IsSwimming)  //! Crouch, walk or swim
 					speedThreshold = 1.0;
 				else
 					speedThreshold = 2.0 * m_MovementSpeed;  //! Jog/sprint
@@ -925,7 +925,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 					}
 
 				#ifdef DIAG_DEVELOPER
-					if (m_Stance != m_StancePrev)
+					if (m_Stance != m_StancePrev && m_StanceChangeTimeout <= 0.0)
 						ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " stance " + m_Stance);
 
 					m_Unit.Expansion_DebugObject_Deferred(1122, hitPosition, "ExpansionDebugSphereSmall_Red", vector.Zero, hitPosition - hitNormal);

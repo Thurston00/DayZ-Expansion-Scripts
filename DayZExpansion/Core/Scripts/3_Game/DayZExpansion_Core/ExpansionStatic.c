@@ -777,9 +777,14 @@ class ExpansionStatic: ExpansionStaticCore
 		return dbgInfo;
 	}
 
-	static string GetHierarchyInfo(EntityAI entity)
+	static string GetHierarchyInfo(Class instance)
 	{
-		string hierarchyInfo = GetDebugInfo(entity, false);
+		string hierarchyInfo = GetDebugInfo(instance, false);
+
+		EntityAI entity;
+		if (!Class.CastTo(entity, instance))
+			return hierarchyInfo;
+
 		EntityAI parent = entity.GetHierarchyParent();
 		auto il = new InventoryLocation;
 

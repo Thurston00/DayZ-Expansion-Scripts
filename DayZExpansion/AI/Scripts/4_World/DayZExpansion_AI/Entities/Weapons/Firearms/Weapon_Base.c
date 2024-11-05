@@ -20,14 +20,19 @@ modded class Weapon_Base
 
 	bool Hitscan(vector begin_point, vector direction, eAIBase ai, out Object hitObject, out vector hitPosition, out vector hitNormal, out int contactComponent)
 	{
+		return Hitscan(begin_point, direction, 1100.0, ai, hitObject, hitPosition, hitNormal, contactComponent);
+	}
+
+	bool Hitscan(vector begin_point, vector direction, float distance, Object ignore, out Object hitObject, out vector hitPosition, out vector hitNormal, out int contactComponent)
+	{
 		#ifdef EAI_TRACE
 		auto trace = CF_Trace_0(this, "Hitscan");
 		#endif
 
-		vector end_point = begin_point + direction * 1100.0;
+		vector end_point = begin_point + direction * distance;
 
 		set<Object> results = new set<Object>();
-		bool hit = DayZPhysics.RaycastRV(begin_point, end_point, hitPosition, hitNormal, contactComponent, results, null, ai, false, false, ObjIntersectIFire, 0.01);
+		bool hit = DayZPhysics.RaycastRV(begin_point, end_point, hitPosition, hitNormal, contactComponent, results, this, ignore, false, false, ObjIntersectFire, 0.01);
 		
 		if (hit)
 		{
@@ -48,6 +53,7 @@ modded class Weapon_Base
 		vector dir = ai.GetWeaponAimDirection();
 
 		eAITarget target = ai.GetTarget();
+		EntityAI targetEntity = target.GetEntity();
 
 		typename type = target.info.Type();
 
@@ -58,17 +64,78 @@ modded class Weapon_Base
 
 		ai.m_eAI_LastEngagedTargetType = type;
 
+		Object ignore = ai;
 		Object hitObject;
 		vector hitPosition;
 		vector hitNormal;
 		int contactComponent;
 
-		bool hit = Hitscan(pos, dir, ai, hitObject, hitPosition, hitNormal, contactComponent);
+		//! We check if we hit something in aim direction.
+		//! Because projectiles may penetrate bushes, trees and even buildings,
+		//! we continue the check until the hit object is not one of those, we exhaust the max distance or we reach max iterations.
+		//! Note that it's not relevant here if the projectile cannot actually penetrate an obstacle, since that is checked by the damage handler.
+		//! We are only interested in the object that could potentially be hit in the projectile's path.
+		vector begPos = pos;
+		float distance = 1100.0;
+		bool hit;
+
+		for (int i = 0; i < 3; i++)
+		{
+			hit = Hitscan(begPos, dir, distance, ignore, hitObject, hitPosition, hitNormal, contactComponent);
+
+			if (hitObject && hitObject != targetEntity)
+			{
+				if (hitObject.IsBush() || hitObject.IsTree() || hitObject.IsBuilding() || hitObject.IsPlainObject())
+				{
+					float hitDist = vector.Distance(begPos, hitPosition);
+
+					if (hitDist > 0)
+					{
+						distance -= hitDist;
+
+						if (distance > 0)
+						{
+							begPos = begPos + dir * hitDist;
+							ignore = hitObject;
+							continue;
+						}
+					}
+				}
+			}
+
+			break;
+		}
+
+		eAIShot shot;
 
 		if (hitObject)
-			ai.m_eAI_FiredShots.Insert(new eAIShot(this, muzzleIndex, pos, ai.GetAimingProfile().GetAimDirection(), hitObject, hitPosition, contactComponent));
+		{
+			shot = new eAIShot(this, muzzleIndex, pos, ai.GetAimingProfile().GetAimDirection(), hitObject, hitPosition, contactComponent);
+			ai.m_eAI_FiredShots.Insert(shot);
+		}
+		else
+		{
+			//! We didn't hit a valid target, but we still want to correct for bullet drop.
+			//! Just set hit position to aim position as we only use it for drop calc.
+			shot = new eAIShot(this, muzzleIndex, pos, ai.GetAimingProfile().GetAimDirection(), null, ai.GetAimPosition(), contactComponent);
+		}
+
+	#ifdef DIAG_DEVELOPER
+		EXTrace.Print(EXTrace.AI, ai, shot.GetInfo());
+	#endif
 
 		eAI_DebugFire(hit, pos, dir, ai, target, hitObject, hitPosition);
+
+		//! Compensate for bullet drop
+		float drop = eAI_CalculateProjectileDrop(shot.m_TravelTime);
+		if (drop > 0.0)
+		{
+			vector projecedPosition = pos + dir * shot.m_Distance;
+			projecedPosition[1] = projecedPosition[1] + drop * 0.9;
+			dir = vector.Direction(pos, projecedPosition).Normalized();
+		}
+
+		pos = pos + dir * 0.2;
 
 		return Fire(muzzleIndex, pos, dir, vector.Forward);
 	#else
@@ -134,21 +201,22 @@ modded class Weapon_Base
 			}
 			EXTrace.Print(true, ai, "didn't hit because it was aiming " + missed + " (actual " + aimPosition + " missed " + missedPosition + ")");
 
-			ai.Expansion_DebugObject_Deferred(1818, "0 0 0", "ExpansionDebugSphereSmall");
-			ai.Expansion_DebugObject_Deferred(1919, missedPosition, "ExpansionDebugSphereSmall_Red", direction, begin_point);
+			ai.Expansion_DebugObject_Deferred(1818, "0 0 0", "ExpansionDebugBox");
+			ai.Expansion_DebugObject_Deferred(1919, missedPosition, "ExpansionDebugBox_Red", direction, begin_point);
 		}
 		else
 		{
-			EntityAI targetEntity = target.GetEntity();
-			if (targetEntity && targetEntity == hitObject)
+			//EntityAI targetEntity = target.GetEntity();
+			//if (targetEntity && targetEntity == hitObject)
+			if (hitObject)
 			{
-				ai.Expansion_DebugObject_Deferred(1818, hitPosition, "ExpansionDebugSphereSmall", direction, begin_point);
-				ai.Expansion_DebugObject_Deferred(1919, "0 0 0", "ExpansionDebugSphereSmall_Red");
+				ai.Expansion_DebugObject_Deferred(1818, hitPosition, "ExpansionDebugBox", direction, begin_point);
+				ai.Expansion_DebugObject_Deferred(1919, "0 0 0", "ExpansionDebugBox_Red");
 			}
 			else
 			{
-				ai.Expansion_DebugObject_Deferred(1818, "0 0 0", "ExpansionDebugSphereSmall");
-				ai.Expansion_DebugObject_Deferred(1919, hitPosition, "ExpansionDebugSphereSmall_Red", direction, begin_point);
+				ai.Expansion_DebugObject_Deferred(1818, "0 0 0", "ExpansionDebugBox");
+				ai.Expansion_DebugObject_Deferred(1919, hitPosition, "ExpansionDebugBox_Red", direction, begin_point);
 			}
 		}
 #endif
@@ -235,6 +303,9 @@ modded class Weapon_Base
 		return dmgCoef;
 	}
 
+	/**
+	 * @brief Calculate projectile travel time over distance in seconds
+	 */
 	float eAI_CalculateProjectileTravelTime(float airFriction, float distance, float initSpeed, float simulationStep = 0.05)
 	{
 		float distanceTraveled;
@@ -245,7 +316,8 @@ modded class Weapon_Base
 
 		float speed;
 
-		while (distanceTraveled < distance)
+		//! In DayZ, max projectile travel time is 6 seconds
+		while (distanceTraveled < distance && timeTraveled < 6.0)
 		{
 			distanceTraveledPrev = distanceTraveled;
 			timeTraveledPrev = timeTraveled;
@@ -258,6 +330,16 @@ modded class Weapon_Base
 			return ExpansionMath.LinearConversion(distanceTraveledPrev, distanceTraveled, distance, timeTraveledPrev, timeTraveled);
 
 		return 0.0;
+	}
+
+	/**
+	 * @brief Calculate projectile drop after travel time in meters
+	 */
+	float eAI_CalculateProjectileDrop(float travelTime)
+	{
+		float g = 9.81;  //! Gravity in m/s^2
+
+		return 0.5 * g * Math.Pow(travelTime, 2.0);
 	}
 
 	/**

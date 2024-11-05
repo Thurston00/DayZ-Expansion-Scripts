@@ -6,26 +6,47 @@ class eAIShot
 	vector m_Origin;
 	vector m_Direction;
 	Object m_HitObject;
+	Object m_HitObjectRoot;
 	vector m_HitPosition;
-	vector m_HitPositionMS;
+	//vector m_HitPositionMS;
 	int m_Component;
 	string m_Ammo;
+	float m_Distance;
 	float m_SpeedCoef;
-	float m_TravelTime;
 	float m_DamageCoef;
+	float m_TravelTime;
 
 	void eAIShot(Weapon_Base weapon, int muzzleIndex, vector origin, vector dir, Object hitObject, vector hitPosition, int component)
 	{
 		m_Time = GetGame().GetTickTime();
+
 		m_Weapon = weapon;
+
 		m_Origin = origin;
 		m_Direction = dir;
+
 		m_HitObject = hitObject;
+
+		EntityAI entity;
+		if (Class.CastTo(entity, hitObject))
+			m_HitObjectRoot = entity.GetHierarchyRoot();
+		else
+			m_HitObjectRoot = hitObject;
+
 		m_HitPosition = hitPosition;
-		//m_HitPositionMS = hitObject.WorldToModel(hitPosition);
+		//m_HitPositionMS = m_HitObjectRoot.WorldToModel(hitPosition);
+
 		m_Component = component;
+
 		float ammoDamage;
+
 		weapon.GetCartridgeInfo(muzzleIndex, ammoDamage, m_Ammo);
+
+		float airFriction;
+		float initSpeed;
+
+		m_DamageCoef = weapon.eAI_CalculateProjectileDamageCoefAtPosition(origin, m_Ammo, hitPosition, 1.0, airFriction, m_Distance, m_SpeedCoef, initSpeed);
+		m_TravelTime = weapon.eAI_CalculateProjectileTravelTime(airFriction, m_Distance, initSpeed);
 	}
 
 	string GetInfo()
@@ -35,7 +56,9 @@ class eAIShot
 		if (m_TravelTime)
 			physInfo = string.Format(" speedCoef=%1 travelTime=%2 dmgCoef=%3", m_SpeedCoef, m_TravelTime, m_DamageCoef);
 
-		return string.Format("%1 processed=%2 weapon=%3 hitObject=%4 hitPosition=%5 ammo=%6%7", this, m_ProcessedTime, m_Weapon, ExpansionStatic.GetDebugInfo(m_HitObject), m_HitPosition.ToString(), m_Ammo, physInfo);
+		string weaponInfo = ExpansionStatic.GetDebugInfo(m_Weapon);
+		string hitObjInfo = ExpansionStatic.GetHierarchyInfo(m_HitObject);
+		return string.Format("%1 processed=%2 weapon=%3 hitObject=%4 hitPosition=%5 ammo=%6%7", this, m_ProcessedTime, weaponInfo, hitObjInfo, m_HitPosition.ToString(), m_Ammo, physInfo);
 	}
 }
 
@@ -66,13 +89,8 @@ class eAIDamageHandler
 		m_TargetInformation = info;
 	}
 
-	bool OnDamageCalculated(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
+	float GetDebugDamageMultiplier(TotalDamageResult damageResult, string dmgZone)
 	{
-	#ifdef DIAG_DEVELOPER
-		m_HitCounter++;
-
-		EXTrace.PrintHit(EXTrace.AI, m_Entity, ToString() + "::OnDamageCalculated[" + m_HitCounter + "]", damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
-
 		if (DayZPlayerImplement.s_eAI_DebugDamage && m_Entity.GetHierarchyRoot().IsMan())
 		{
 			//! Prevent death by health or blood dmg (can still bleed out from cuts)
@@ -104,7 +122,7 @@ class eAIDamageHandler
 				EXTrace.Print(EXTrace.AI, m_Entity, dmgZone + " health: " + m_Entity.GetHealth(dmgZone, "Health"));
 
 			if (dmg * transferToGlobalCoef >= Math.Floor(m_Entity.GetHealth("", "Health")))
-				return false;
+				return 0.01;
 
 			if (m_Entity.IsMan())
 			{
@@ -112,17 +130,27 @@ class eAIDamageHandler
 				{
 					//! If head health goes to zero, character dies
 					if (dmg >= Math.Floor(m_Entity.GetHealth(dmgZone, "Health")))
-						return false;
+						return 0.01;
 				}
 
 				//! Any damage to brain is certain death, HP don't matter
 				if (dmgZone == "Brain")
-					return false;
+					return 0;
 
 				if (Math.Floor(m_Entity.GetHealth("", "Blood")) - damageResult.GetDamage(dmgZone, "Blood") <= 2600)
-					return false;
+					return 0.01;
 			}
 		}
+
+		return 1.0;
+	}
+
+	bool OnDamageCalculated(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
+	{
+	#ifdef DIAG_DEVELOPER
+		m_HitCounter++;
+
+		EXTrace.PrintHit(EXTrace.AI, m_Entity, ToString() + "::OnDamageCalculated[" + m_HitCounter + "]", damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
 	#endif
 
 		DayZPlayerImplement sourcePlayer;
@@ -173,14 +201,16 @@ class eAIDamageHandler
 							//! well below fastest fire rate of any firearm i.e. consecutive hit due to penetrating projectile
 							//! Only allow consecutive hits if correct entity
 
+						/*
 							vector toEntityDir = vector.Direction(shot.m_Origin, modelPos).Normalized();
 							float dot = vector.Dot(shot.m_Direction, toEntityDir);
 
 						#ifdef DIAG_DEVELOPER
 							EXTrace.Print(EXTrace.AI, ai, "eAIShot direction=" + shot.m_Direction + " toEntityDir=" + toEntityDir + " dot=" + dot);
 						#endif
+						*/
 
-							if (rootEntity == shot.m_HitObject || dot >= 0.97)
+							if (rootEntity == shot.m_HitObjectRoot /*|| dot >= 0.996*/)
 							{
 								if (!shot.m_ProcessedTime)
 									shot.m_ProcessedTime = time;
@@ -204,33 +234,51 @@ class eAIDamageHandler
 					{
 						foreach (eAIShot candidate: candidates)
 						{
-							float airFriction;
-							float distance;
-							float initSpeed;
-							candidate.m_DamageCoef = candidate.m_Weapon.eAI_CalculateProjectileDamageCoefAtPosition(candidate.m_Origin, ammo, candidate.m_HitPosition, 1.0, airFriction, distance, candidate.m_SpeedCoef, initSpeed);
+							//float airFriction;
+							//float distance;
+							//float initSpeed;
+							//candidate.m_DamageCoef = candidate.m_Weapon.eAI_CalculateProjectileDamageCoefAtPosition(candidate.m_Origin, ammo, candidate.m_HitPosition, 1.0, airFriction, distance, candidate.m_SpeedCoef, initSpeed);
 
-							candidate.m_TravelTime = candidate.m_Weapon.eAI_CalculateProjectileTravelTime(airFriction, distance, initSpeed);
+							//candidate.m_TravelTime = candidate.m_Weapon.eAI_CalculateProjectileTravelTime(airFriction, distance, initSpeed);
 							float elapsed = time - candidate.m_Time;
 							float travelTimeRemaining = candidate.m_TravelTime - elapsed;
 
 							if (travelTimeRemaining > 0.05)
-								GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(CheckCandidate, travelTimeRemaining * 1000, false, candidate, ai, aiPos, modelPos, dir, travelTimeRemaining);
-							else if (CheckCandidate(candidate, ai, aiPos, modelPos, dir, travelTimeRemaining))
+								GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(CheckCandidate, travelTimeRemaining * 1000, false, candidate, ai, modelPos, dir, travelTimeRemaining, dmgZone);
+							else if (CheckCandidate(candidate, ai, modelPos, dir, travelTimeRemaining, dmgZone))
 								break;
 						}
+
+					#ifdef DIAG_DEVELOPER
+						if (!candidates.Count())
+						{
+							DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = DayZPlayerImplement.s_eAI_DebugDamage;
+
+							ai.Expansion_DebugObject(-5, modelPos - "0 1.5 0", "ExpansionDebugNoticeMe_Blue", Vector(dir[0], 0, dir[2]));
+							ai.Expansion_DebugObject(-6, modelPos, "ExpansionDebugBox_Blue", Vector(dir[0], 0, dir[2]));
+
+							DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
+
+							EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " and no candidates, ignoring dmg");
+						}
+					#endif
 
 						return false;
 					}
 				}
 
 			#ifdef DIAG_DEVELOPER
-				ai.Expansion_DebugObject(-4, modelPos, "ExpansionDebugBox", Vector(dir[0], 0, dir[2]));
+				ai.Expansion_DebugObject(-7, modelPos, "ExpansionDebugBox", Vector(dir[0], 0, dir[2]));
 
 				DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
 			#endif
 			}
 
+		#ifdef DIAG_DEVELOPER
+			float damageMultiplier = GetDebugDamageMultiplier(damageResult, dmgZone);
+		#else
 			float damageMultiplier = 1.0;
+		#endif
 
 			DayZPlayerImplement player;
 			bool isPlayerItem;
@@ -357,7 +405,7 @@ class eAIDamageHandler
 		m_Entity.ProcessDirectDamage(damageType, source, dmgZone, ammo, modelPos, damageCoef);
 	}
 
-	bool CheckCandidate(notnull eAIShot candidate, eAIBase ai, vector aiPos, vector modelPos, vector dir, float travelTimeRemaining)
+	bool CheckCandidate(notnull eAIShot candidate, eAIBase ai, vector modelPos, vector dir, float travelTimeRemaining, string dmgZone)
 	{
 	#ifdef DIAG_DEVELOPER
 		bool dbgObjEnabled = DayZPlayerImplement.s_Expansion_DebugObjects_Enabled;
@@ -366,18 +414,18 @@ class eAIDamageHandler
 		if (candidate.m_ProcessedTime)
 			return false;
 
-		if (!candidate.m_HitObject)
+		if (!candidate.m_HitObjectRoot)
 			return false;
 
 		vector minMax[2];
 		eAIShot match;
 
-		if (candidate.m_HitObject.GetCollisionBox(minMax))
+		if (candidate.m_HitObjectRoot.GetCollisionBox(minMax))
 		{
 			//! Check if hit pos is within collision box of target entity at its current position
-			vector start = candidate.m_HitObject.WorldToModel(candidate.m_HitPosition);
+			vector start = candidate.m_HitObjectRoot.WorldToModel(candidate.m_HitPosition);
 			float dist = Math.Min(minMax[1][0], minMax[1][2]) - Math.Min(minMax[0][0], minMax[0][2]) * 0.5;
-			vector end = candidate.m_HitObject.WorldToModel(candidate.m_HitPosition + candidate.m_Direction * dist);
+			vector end = candidate.m_HitObjectRoot.WorldToModel(candidate.m_HitPosition + candidate.m_Direction * dist);
 
 			if (Math3D.IntersectRayBox(start, end, minMax[0], minMax[1]) > -1)
 				match = candidate;
@@ -385,7 +433,7 @@ class eAIDamageHandler
 
 	/*
 		//! Check if target is still at hit position (+/- 20 cm)
-		vector modelPosWS = candidate.m_HitObject.ModelToWorld(candidate.m_HitPositionMS);
+		vector modelPosWS = candidate.m_HitObjectRoot.ModelToWorld(candidate.m_HitPositionMS);
 		if (vector.DistanceSq(candidate.m_HitPosition, modelPosWS) <= 0.04)
 			match = candidate;
 	*/
@@ -394,22 +442,46 @@ class eAIDamageHandler
 		{
 			GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Remove(CheckCandidate);
 
-			string dmgZone = match.m_HitObject.GetDamageZoneNameByComponentIndex(match.m_Component);
+			if (match.m_HitObject == match.m_HitObjectRoot)
+			{
+				dmgZone = match.m_HitObjectRoot.GetDamageZoneNameByComponentIndex(match.m_Component);
+			}
+			else if (match.m_HitObjectRoot.IsMan())
+			{
+				if (!m_Entity.IsMan())
+				{
+					//! Do not redirect from non-human entity to Head or Brain, redirect to Torso instead
+					if (s_HumanDmgZonesForRedirect.Find(dmgZone) == -1)
+						dmgZone = "Torso";
+				}
+			}
+			else if (match.m_HitObjectRoot.IsInherited(ZombieBase))
+			{
+				if (!m_Entity.IsZombie())
+					dmgZone = "Head";
+			}
+			else if (match.m_HitObjectRoot.IsInherited(AnimalBase))
+			{
+				if (!m_Entity.IsAnimal())
+					dmgZone = "Zone_Head";
+			}
 
 		#ifdef DIAG_DEVELOPER
-			vector hitEntityDir = vector.Direction(aiPos, match.m_HitPosition);
+			vector hitEntityDir = vector.Direction(match.m_Origin, match.m_HitPosition);
 
 			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = DayZPlayerImplement.s_eAI_DebugDamage;
 
 			ai.Expansion_DebugObject(-1, modelPos, "ExpansionDebugNoticeMe_Red", Vector(dir[0], 0, dir[2]));
-			ai.Expansion_DebugObject(-2, match.m_HitPosition, "ExpansionDebugNoticeMe", Vector(hitEntityDir[0], 0, hitEntityDir[2]));
+			ai.Expansion_DebugObject(-2, modelPos, "ExpansionDebugBox_Red", Vector(dir[0], 0, dir[2]));
+			ai.Expansion_DebugObject(-3, match.m_HitPosition, "ExpansionDebugNoticeMe", Vector(hitEntityDir[0], 0, hitEntityDir[2]));
+			ai.Expansion_DebugObject(-4, match.m_HitPosition, "ExpansionDebugBox", Vector(hitEntityDir[0], 0, hitEntityDir[2]));
 
 			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
 
-			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " dist " + dir.Length() + ", redirecting dmg to " + ExpansionStatic.GetDebugInfo(match.m_HitObject) + " dist " + hitEntityDir.Length() + " speedCoef=" + match.m_SpeedCoef + " travelTime=" + match.m_TravelTime + " remaining=" + travelTimeRemaining + " " + dmgZone + " damageCoef=" + match.m_DamageCoef);
+			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " dist " + dir.Length() + ", redirecting dmg to " + ExpansionStatic.GetDebugInfo(match.m_HitObjectRoot) + " dist " + hitEntityDir.Length() + " speedCoef=" + match.m_SpeedCoef + " travelTime=" + match.m_TravelTime + " remaining=" + travelTimeRemaining + " " + dmgZone + " damageCoef=" + match.m_DamageCoef);
 		#endif
 
-			match.m_HitObject.ProcessDirectDamage(DT_FIRE_ARM, match.m_Weapon, dmgZone, match.m_Ammo, match.m_HitPosition, match.m_DamageCoef);
+			match.m_HitObjectRoot.ProcessDirectDamage(DT_FIRE_ARM, match.m_Weapon, dmgZone, match.m_Ammo, match.m_HitPosition, match.m_DamageCoef);
 
 			return true;
 		}
@@ -418,11 +490,12 @@ class eAIDamageHandler
 		{
 			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = DayZPlayerImplement.s_eAI_DebugDamage;
 
-			ai.Expansion_DebugObject(-3, modelPos - "0 1.5 0", "ExpansionDebugNoticeMe_Blue", Vector(dir[0], 0, dir[2]));
+			ai.Expansion_DebugObject(-5, modelPos - "0 1.5 0", "ExpansionDebugNoticeMe_Blue", Vector(dir[0], 0, dir[2]));
+			ai.Expansion_DebugObject(-6, modelPos, "ExpansionDebugBox_Blue", Vector(dir[0], 0, dir[2]));
 
 			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
 
-			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + ", ignoring dmg");
+			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " and candidate wasn't hit, ignoring dmg");
 		}
 	#endif
 

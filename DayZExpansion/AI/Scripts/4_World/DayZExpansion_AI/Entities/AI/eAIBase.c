@@ -70,6 +70,7 @@ class eAIBase: PlayerBase
 	ref array<ref eAIShot> m_eAI_FiredShots = {};
 	float m_eAI_PurgeFiredShotsTick;
 	Object m_eAI_HitObject;
+	int m_eAI_DiscardedShot_DbgIdx = -8;
 
 	// Command handling
 	private ExpansionHumanCommandScript m_eAI_Command;
@@ -4645,6 +4646,11 @@ class eAIBase: PlayerBase
 
 			float time = GetGame().GetTickTime();
 
+		#ifdef DIAG_DEVELOPER
+			bool dbgObjEnabled = s_Expansion_DebugObjects_Enabled;
+			s_Expansion_DebugObjects_Enabled = s_eAI_DebugDamage;
+		#endif
+
 			for (i = m_eAI_FiredShots.Count() - 1; i >= 0; i--)
 			{
 				eAIShot shot = m_eAI_FiredShots[i];
@@ -4654,11 +4660,20 @@ class eAIBase: PlayerBase
 				{
 				#ifdef DIAG_DEVELOPER
 					if (!shot.m_ProcessedTime)
+					{
 						EXTrace.Print(EXTrace.AI, this, "Discarding unprocessed " + shot.GetInfo());
+						vector dir = Vector(shot.m_Direction[0], 0, shot.m_Direction[2]);
+						Expansion_DebugObject(m_eAI_DiscardedShot_DbgIdx--, shot.m_HitPosition - "0 1.5 0", "ExpansionDebugNoticeMe_Orange", dir, vector.Zero, 5);
+						Expansion_DebugObject(m_eAI_DiscardedShot_DbgIdx--, shot.m_HitPosition, "ExpansionDebugBox_Orange", dir, vector.Zero, 5);
+					}
 				#endif
 					m_eAI_FiredShots.Remove(i);
 				}
 			}
+
+		#ifdef DIAG_DEVELOPER
+			s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
+		#endif
 		}
 
 		//! Do FSM update only after current command has been running for at least one command handler tick, else initial gun holding will look scuffed

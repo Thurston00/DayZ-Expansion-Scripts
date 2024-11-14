@@ -248,4 +248,10 @@ class eAIItemTargetInformation: eAIEntityTargetInformation
 
 		return GetThreat(ai) <= 0.1;
 	}
+
+	override void OnHealthLevelChanged(int oldLevel, int newLevel, string zone)
+	{
+		if (GetGame().IsClient())
+			GetDayZGame().GetExpansionGame().m_FirearmFXHitObject = m_Item.GetHierarchyRoot();
+	}
 };

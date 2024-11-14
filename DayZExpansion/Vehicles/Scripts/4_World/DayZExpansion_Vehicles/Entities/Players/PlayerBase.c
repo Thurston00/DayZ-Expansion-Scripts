@@ -53,9 +53,6 @@ modded class PlayerBase
 		#ifdef EXPANSION_VEHICLE_TOWING
 		AddAction( ExpansionActionConnectTow, InputActionMap );
 		AddAction( ExpansionActionDisconnectTow, InputActionMap );
-
-		AddAction( ExpansionActionVehicleConnectTow, InputActionMap );
-		AddAction( ExpansionActionVehicleDisconnectTow, InputActionMap );
 		#endif
 
 		AddAction( ExpansionActionSwitchSeats, InputActionMap );

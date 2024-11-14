@@ -67,7 +67,10 @@ class eAIBase: PlayerBase
 	ref eAINoiseTargetInformation m_eAI_NoiseTargetInfo = new eAINoiseTargetInformation();
 	int m_eAI_NoiseTarget;
 	private bool m_eAI_HasLOS;
-	EntityAI m_eAI_HitscanEntity;
+	ref array<ref eAIShot> m_eAI_FiredShots = {};
+	float m_eAI_PurgeFiredShotsTick;
+	Object m_eAI_HitObject;
+	int m_eAI_DiscardedShot_DbgIdx = -8;
 
 	// Command handling
 	private ExpansionHumanCommandScript m_eAI_Command;
@@ -172,6 +175,7 @@ class eAIBase: PlayerBase
 	int m_eAI_PrevHCCState;
 	float m_eAI_SurfaceY;
 	ref array<EffectArea> m_eAI_ContaminatedAreas;
+	float m_eAI_ContaminatedAreaAvoidanceDirection;
 	ref map<int, float> m_eAI_ProtectionLevels;
 
 	private Apple m_DebugTargetApple;
@@ -250,6 +254,7 @@ class eAIBase: PlayerBase
 			ExpansionAISettings settings = GetExpansionSettings().GetAI();
 			AI_HANDLEVAULTING = settings.Vaulting;
 			m_eAI_MemeLevel = settings.MemeLevel;
+			eAI_RandomizeContaminatedAreaAvoidanceDirection();
 		}
 
 		SetEventMask(EntityEvent.INIT);
@@ -788,7 +793,7 @@ class eAIBase: PlayerBase
 
 	bool eAI_ShouldBandage()
 	{
-		if (IsBleeding() && GetGame().GetTickTime() - m_eAI_LastHitTime > 10 && (m_eAI_CurrentThreatToSelfActive < 0.4 || GetHealth01("", "Blood") < 0.7 || !m_eAI_Targets.Count() || GetTarget().info.IsInherited(eAIItemTargetInformation)))
+		if (IsBleeding() && GetGame().GetTickTime() - m_eAI_LastHitTime > 10 && (m_ContaminatedAreaCount == 0 || m_eAI_ProtectionLevels[DEF_CHEMICAL] >= 5.0) && (m_eAI_CurrentThreatToSelfActive < 0.4 || GetHealth01("", "Blood") < 0.7 || !m_eAI_Targets.Count() || GetTarget().info.IsInherited(eAIItemTargetInformation) || GetTarget().info.IsInherited(eAINoiseTargetInformation)))
 			return true;
 
 		return false;
@@ -2885,6 +2890,7 @@ class eAIBase: PlayerBase
 		return cmd;
 	}
 
+/*
 	eAICommandVehicle GetCommand_VehicleAI()
 	{
 		return eAICommandVehicle.Cast(GetCommand_Script());
@@ -2898,8 +2904,8 @@ class eAIBase: PlayerBase
 		m_eAI_Command = cmd;
 		return cmd;
 	}
+*/
 
-/*
 	HumanCommandVehicle GetCommand_VehicleAI()
 	{
 		return GetCommand_Vehicle();
@@ -2908,7 +2914,6 @@ class eAIBase: PlayerBase
 	{
 		return StartCommand_Vehicle(vehicle, seatIdx, seat_anim, fromUnconscious);
 	}
-*/
 
 	void Notify_Transport(Transport vehicle, int seatIndex)
 	{
@@ -3040,15 +3045,46 @@ class eAIBase: PlayerBase
 	{
 		EXTrace.Print(EXTrace.AI, this, "Expansion_OnContaminatedAreaEnterServer " + area + " " + area.m_Position + " " + area.m_Radius);
 
+		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Remove(eAI_ForgetContaminatedArea);
+
 		if (m_eAI_ContaminatedAreas.Find(area) == -1)
 			m_eAI_ContaminatedAreas.Insert(area);
 	}
 
+	override void Expansion_OnContaminatedAreaExitServer(EffectArea area, EffectTrigger trigger)
+	{
+		EXTrace.Print(EXTrace.AI, this, "Expansion_OnContaminatedAreaExitServer " + area + " " + area.m_Position + " " + area.m_Radius);
+
+		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(eAI_ForgetContaminatedArea, 5 * 60 * 1000, false, area);
+	}
+
 	void eAI_ForgetContaminatedArea(EffectArea area)
 	{
-		EXTrace.Print(EXTrace.AI, this, "eAI_ForgetContaminatedArea " + area + " " + area.m_Position + " " + area.m_Radius);
+		if (area)
+		{
+			EXTrace.Print(EXTrace.AI, this, "eAI_ForgetContaminatedArea " + area + " " + area.m_Position + " " + area.m_Radius);
 
-		m_eAI_ContaminatedAreas.RemoveItem(area);
+			m_eAI_ContaminatedAreas.RemoveItem(area);
+		}
+		else
+		{
+			for (int i = m_eAI_ContaminatedAreas.Count() - 1; i >= 0; i--)
+			{
+				if (!m_eAI_ContaminatedAreas[i])
+					m_eAI_ContaminatedAreas.Remove(i);
+			}
+		}
+
+		if (m_eAI_ContaminatedAreas.Count() == 0)
+			eAI_RandomizeContaminatedAreaAvoidanceDirection();
+	}
+
+	void eAI_RandomizeContaminatedAreaAvoidanceDirection()
+	{
+		if (Math.RandomInt(0, 2))
+			m_eAI_ContaminatedAreaAvoidanceDirection = 15.0;
+		else
+			m_eAI_ContaminatedAreaAvoidanceDirection = -15.0;
 	}
 
 	/**
@@ -3062,31 +3098,21 @@ class eAIBase: PlayerBase
 		auto trace = CF_Trace_1(this, "OverrideTargetPosition").Add(pPosition);
 #endif
 
-		vector position = GetPosition();
-
-		foreach (EffectArea area: m_eAI_ContaminatedAreas)
+		if (m_eAI_ContaminatedAreas.Count() && Expansion_CanBeDamaged() && m_eAI_ProtectionLevels[DEF_CHEMICAL] < 5.0)
 		{
-			if (!Expansion_CanBeDamaged())
-				break;
+			EffectArea closestArea;
+			vector position = GetPosition();
+			vector oPos = pPosition;
 
-			if (area)
+			if (ContaminatedArea_Base.s_Expansion_MergedClusters.FindClosestPointOutsideAnyCluster(position, pPosition, m_eAI_ContaminatedAreaAvoidanceDirection, closestArea, this))
 			{
-				vector testPosition = position + vector.Direction(position, pPosition).Normalized() * 10.0;
-				if (Math.IsPointInCircle(area.m_Position, area.m_Radius, testPosition))
+				pPosition = ExpansionStatic.GetSurfaceRoadPosition(pPosition, RoadSurfaceDetection.CLOSEST);
+				isFinal = true;
+				Expansion_DebugObject(3142, pPosition, "ExpansionDebugNoticeMe_Cyan");
+				if (closestArea.Expansion_IsPointInside(oPos) && !closestArea.Expansion_IsPointInside(position))
 				{
-					//! Only enter contaminated area if we have full protection, else stay on outer perimeter
-					if (m_eAI_ProtectionLevels[DEF_CHEMICAL] < 5.0)
-					{
-						position[1] = area.m_Position[1];
-						pPosition = area.m_Position - vector.Direction(position, area.m_Position).Normalized() * (area.m_Radius + 5.0);
-						pPosition = ExpansionStatic.GetSurfaceRoadPosition(pPosition, RoadSurfaceDetection.CLOSEST);
-						isFinal = true;
-						Expansion_DebugObject(3141, area.m_Position, "ExpansionDebugNoticeMe_Yellow");
-						Expansion_DebugObject(3142, pPosition, "ExpansionDebugNoticeMe_Cyan");
-						m_PathFinding.m_IsTargetUnreachable = true;
-						if (Math.IsPointInCircle(pPosition, 1.0, position))
-							m_PathFinding.m_IsUnreachable = true;
-					}
+					m_PathFinding.m_IsTargetUnreachable = true;
+					m_PathFinding.m_IsUnreachable = true;
 				}
 			}
 		}
@@ -4341,7 +4367,7 @@ class eAIBase: PlayerBase
 
 	bool eAI_HandleAiming(float pDt, bool hasLOS = false)
 	{
-		eAICommandVehicle vehCmd = GetCommand_VehicleAI();
+		auto vehCmd = GetCommand_VehicleAI();
 		if (vehCmd && (vehCmd.IsGettingIn() || vehCmd.IsGettingOut()))
 			return false;
 
@@ -4384,15 +4410,16 @@ class eAIBase: PlayerBase
 			else
 				aimPosition = target.GetPosition(this, !isServer) + target.GetAimOffset(this);
 
+			if ((!isServer || (IsRaised() && m_eAI_CurrentThreatToSelfActive > 0.152) || (!IsRaised() && m_eAI_CurrentThreatToSelfActive > 0.15) || houseWithDoors) && lookAim)
+				aimDirectionRecalculate = true;
+
 			if (isServer)
 			{
-				if ((m_eAI_CurrentThreatToSelfActive > 0.1 || houseWithDoors) && lookAim)
+				if (aimDirectionRecalculate || (!IsRaised() && (m_eAI_CurrentThreatToSelfActive > 0.1 || houseWithDoors) && lookAim))
 					lookDirectionRecalculate = true;
 
 				LookAtPosition(aimPosition, lookDirectionRecalculate);
 			}
-			if ((!isServer || (IsRaised() && m_eAI_CurrentThreatToSelfActive > 0.152) || (!IsRaised() && m_eAI_CurrentThreatToSelfActive > 0.15) || houseWithDoors) && lookAim)
-				aimDirectionRecalculate = true;
 
 			AimAtPosition(aimPosition, aimDirectionRecalculate);
 		}
@@ -4442,9 +4469,12 @@ class eAIBase: PlayerBase
 		//{
 		//	car.Control(pDt);
 		// }
+
+		int i;
+
 #ifdef DIAG_DEVELOPER
 #ifndef SERVER
-		for (int i = m_Expansion_DebugShapes.Count() - 1; i >= 0; i--)
+		for (i = m_Expansion_DebugShapes.Count() - 1; i >= 0; i--)
 			m_Expansion_DebugShapes[i].Destroy();
 		m_Expansion_DebugShapes.Clear();
 #endif
@@ -4631,6 +4661,47 @@ class eAIBase: PlayerBase
 		UpdateDelete();
 
 		OnScheduledTick(pDt);
+
+		m_eAI_PurgeFiredShotsTick += pDt;
+		if (m_eAI_PurgeFiredShotsTick > 1.0)
+		{
+			m_eAI_PurgeFiredShotsTick = 0;
+
+			float time = GetGame().GetTickTime();
+
+		#ifdef DIAG_DEVELOPER
+			bool dbgObjEnabled = s_Expansion_DebugObjects_Enabled;
+			s_Expansion_DebugObjects_Enabled = s_eAI_DebugDamage;
+		#endif
+
+			for (i = m_eAI_FiredShots.Count() - 1; i >= 0; i--)
+			{
+				eAIShot shot = m_eAI_FiredShots[i];
+				float elapsed = time - shot.m_Time;
+				//! If shot has been processed or flight time exceeds 6 seconds (DayZ max), remove shot
+				if ((shot.m_ProcessedTime && time - shot.m_ProcessedTime > 0.005) || elapsed > 6.0)
+				{
+				#ifdef DIAG_DEVELOPER
+					if (!shot.m_ProcessedTime)
+					{
+						EXTrace.Print(EXTrace.AI, this, "Discarding unprocessed " + shot.GetInfo());
+						vector dir = Vector(shot.m_Direction[0], 0, shot.m_Direction[2]);
+						Expansion_DebugObject(m_eAI_DiscardedShot_DbgIdx--, shot.m_HitPosition - "0 1.5 0", "ExpansionDebugNoticeMe_Orange", dir, vector.Zero, 5);
+						Expansion_DebugObject(m_eAI_DiscardedShot_DbgIdx--, shot.m_HitPosition, "ExpansionDebugBox_Orange", dir, vector.Zero, 5);
+
+					#ifdef EXPANSION_AI_DMGDEBUG_CHATTY
+						ExpansionStatic.MessageNearPlayers(shot.m_HitPosition, 100.0, "[" + ExpansionStatic.FormatFloat(shot.m_Time, 3, false) + "] timeout " + shot.m_HitObject + " travel " + ExpansionStatic.FormatFloat(shot.m_TravelTime, 4, false) + " elapsed " + ExpansionStatic.FormatFloat(elapsed, 4, false));
+					#endif
+					}
+				#endif
+					m_eAI_FiredShots.Remove(i);
+				}
+			}
+
+		#ifdef DIAG_DEVELOPER
+			s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
+		#endif
+		}
 
 		//! Do FSM update only after current command has been running for at least one command handler tick, else initial gun holding will look scuffed
 		if (m_FSM && m_eAI_CommandTime > pDt)
@@ -5107,7 +5178,7 @@ class eAIBase: PlayerBase
 		bool isDir;
 		bool isDirWS;
 
-		eAICommandVehicle hcv = GetCommand_VehicleAI();
+		auto hcv = GetCommand_VehicleAI();
 		if (speed > 0 || hcv)
 		{
 			isDir = true;
@@ -5321,8 +5392,6 @@ class eAIBase: PlayerBase
 		if (!GetGame())
 			return false;
 
-		m_eAI_HitscanEntity = null;
-
 		if (!m_eAI_Targets.Count())
 		{
 			return false;
@@ -5473,12 +5542,10 @@ class eAIBase: PlayerBase
 			{
 				//! Right on target
 				state.m_LOS = true;
-				m_eAI_HitscanEntity = hitEntity;
 			}
 			else if (obj == parent)
 			{
 				state.m_LOS = true;
-				//! @note not setting hitscan entity here because we want the actual projectile to penetrate
 			}
 			else
 			{
@@ -5498,13 +5565,11 @@ class eAIBase: PlayerBase
 				{
 					//! If object is zombie or animal but not the target or its parent, we don't care if they get shot when they are in the way
 					state.m_LOS = true;
-					m_eAI_HitscanEntity = hitEntity;
 				}
 				else if (((obj.IsTree() || obj.IsBush()) && contactToTargetDistSq <= 4 && state.m_ThreatLevelActive >= 0.4) || contactToTargetDistSq <= 0.0625)
 				{
 					//! If object is tree/bush but not the target or its parent, we don't care if they get shot when they are in the way
 					state.m_LOS = true;
-					//! @note not setting hitscan entity here because we want the actual projectile to penetrate
 				}
 			}
 
@@ -6604,7 +6669,7 @@ class eAIBase: PlayerBase
 	{
 
 #ifdef DIAG_DEVELOPER
-		string msg = "Action timed out for " + Debug.GetDebugName(this) + " while trying to " + what + " " + Debug.GetDebugName(GetItemInHands());
+		string msg = "Action timed out for " + Debug.GetDebugName(this) + " while trying to " + what + ", item in hands " + Debug.GetDebugName(GetItemInHands());
 		EXTrace.Print(true, this, msg);
 		ExpansionNotification("ACTION TIMEOUT", msg).Error();
 #endif

@@ -95,6 +95,19 @@ class eAIEntityTargetInformation: eAITargetInformation
 		vector position = GetPosition(ai, actual);
 		return vector.DistanceSq(ai.GetPosition(), position);
 	}
+
+	override void OnHit(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
+	{
+		eAIBase ai;
+		if (source && Class.CastTo(ai, source.GetHierarchyRoot()))
+			ai.m_eAI_HitObject = m_Target;
+	}
+
+	override void OnHealthLevelChanged(int oldLevel, int newLevel, string zone)
+	{
+		if (GetGame().IsClient())
+			GetDayZGame().GetExpansionGame().m_FirearmFXHitObject = m_Target;
+	}
 };
 
 class eAIEntity<Class T>

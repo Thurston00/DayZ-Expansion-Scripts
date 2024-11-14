@@ -864,15 +864,6 @@ class ExpansionBoatScript: CarScript
 		return 3.5;
 	}
 
-	override bool Expansion_CanConnectTow(notnull Object other)
-	{
-#ifdef EXPANSIONTRACE
-		auto trace = CF_Trace_1(ExpansionTracing.VEHICLES, this, "Expansion_CanConnectTow").Add(other);
-#endif
-
-		return false;
-	}
-
 	override void UpdateVisuals()
 	{
 		ShowSelection("antiwater");

@@ -25,7 +25,7 @@ modded class CarScript
 
 	override void EEKilled(Object killer)
 	{
-		m_TargetInformation.OnDeath();
+		m_TargetInformation.OnDeath(killer);
 
 		super.EEKilled(killer);
 	}
@@ -36,9 +36,16 @@ modded class CarScript
 		EXTrace.PrintHit(EXTrace.AI, this, "EEHitBy", damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
 	#endif
 
-		m_TargetInformation.OnHit();
+		m_TargetInformation.OnHit(damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
 
 		super.EEHitBy(damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
+	}
+
+	override void EEHealthLevelChanged(int oldLevel, int newLevel, string zone)
+	{
+		m_TargetInformation.OnHealthLevelChanged(oldLevel, newLevel, zone);
+
+		super.EEHealthLevelChanged(oldLevel, newLevel, zone);
 	}
 
 	override void OnInput(float dt)

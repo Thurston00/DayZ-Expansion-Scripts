@@ -1841,6 +1841,8 @@ class ExpansionMarketModule: CF_ModuleWorld
 			}
 		}
 
+		CheckMoney(playerWorth, amount, disallowedMoney, player);
+
 		MarketModulePrint("FindMoneyAndCountTypes - not enough money found - end and return false!");
 		return false;
 	}
@@ -1851,7 +1853,7 @@ class ExpansionMarketModule: CF_ModuleWorld
 			return true;
 
 		if (disallowedMoney.Count() > 0 && player)
-			ExpansionNotification("STR_EXPANSION_MARKET_TITLE", string.Format("You can't use %1 right now because it hasn't been persisted to game storage yet. Please wait at least 15-20 seconds.", ExpansionString.JoinStrings(disallowedMoney))).Error(player.GetIdentity());
+			ExpansionNotification("STR_EXPANSION_MARKET_TITLE", string.Format("You can't use %1 right now because it hasn't been persisted to game storage yet. Please wait at least 15-20 seconds.", ExpansionString.JoinStrings(disallowedMoney)), EXPANSION_NOTIFICATION_ICON_TRADER, COLOR_EXPANSION_NOTIFICATION_ERROR, 7, ExpansionNotificationType.MARKET).Error(player.GetIdentity());
 
 		return false;
 	}
@@ -3154,7 +3156,7 @@ class ExpansionMarketModule: CF_ModuleWorld
 
 		if (disallowedItems.Count() > 0)
 		{
-			ExpansionNotification("STR_EXPANSION_MARKET_TITLE", string.Format("You can't sell %1 right now because it hasn't been persisted to game storage yet. Please wait at least 15-20 seconds.", ExpansionString.JoinStrings(disallowedItems, ", ", true))).Error(player.GetIdentity());
+			ExpansionNotification("STR_EXPANSION_MARKET_TITLE", string.Format("You can't sell %1 right now because it hasn't been persisted to game storage yet. Please wait at least 15-20 seconds.", ExpansionString.JoinStrings(disallowedItems, ", ", true)), EXPANSION_NOTIFICATION_ICON_TRADER, COLOR_EXPANSION_NOTIFICATION_ERROR, 7, ExpansionNotificationType.MARKET).Error(player.GetIdentity());
 
 			player.ClearMarketSell();
 

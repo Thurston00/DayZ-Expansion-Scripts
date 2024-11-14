@@ -372,7 +372,7 @@ class ExpansionMarketMenuItem: ExpansionScriptView
 			if (isOutOfStock && canOnlyBuy)
 				m_ItemController.OverlayText = "#STR_EXPANSION_MARKET_ITEM_NOTINSTOCK";
 			else
-				m_ItemController.OverlayText = "NOT ENOUGH REPUTATION";  //! TODO: Translation
+				m_ItemController.OverlayText = "#STR_EXPANSION_MARKET_ITEM_REP";
 			m_ItemController.NotifyPropertyChanged("OverlayText");
 		}
 				

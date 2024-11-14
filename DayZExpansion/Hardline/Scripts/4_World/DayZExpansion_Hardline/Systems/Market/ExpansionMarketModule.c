@@ -85,7 +85,7 @@ modded class ExpansionMarketModule
 		super.Exec_RequestSell(player, itemClassName, count, playerSentPrice, trader, playerSentSellDebug);
 	}
 	
-	bool HasRepForRarity(PlayerBase player, ExpansionHardlineItemRarity rarity, out int required)
+	bool HasRepForRarity(PlayerBase player, ExpansionHardlineItemRarity rarity, out int required = 0)
 	{
 		if (rarity == ExpansionHardlineItemRarity.NONE)
 		{

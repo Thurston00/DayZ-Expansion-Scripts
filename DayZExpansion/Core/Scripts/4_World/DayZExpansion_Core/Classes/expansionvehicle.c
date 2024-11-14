@@ -1285,9 +1285,49 @@ class ExpansionVehicleT<Class T>: ExpansionVehicle
 		return m_Vehicle.LeavingSeatDoesAttachment(posIdx);
 	}
 
+	override int NumberTowConnections()
+	{
+		return m_Vehicle.Expansion_NumberTowConnections();
+	}
+
+	override bool GetOverlappingTowConnection(vector towPosition, float towRadius, out int index)
+	{
+		return m_Vehicle.Expansion_GetOverlappingTowConnection(towPosition, towRadius, index);
+	}
+
+	override vector GetTowDirection()
+	{
+		 return m_Vehicle.Expansion_GetTowDirection();
+	}
+
+	override float GetTowLength()
+	{
+		return m_Vehicle.Expansion_GetTowLength();
+	}
+
+	override vector GetTowPosition()
+	{
+		return m_Vehicle.Expansion_GetTowPosition();
+	}
+
+	override vector GetTowPositionWS()
+	{
+		return m_Vehicle.ModelToWorld(GetTowPosition());
+	}
+
+	override EntityAI GetTowedEntity()
+	{
+		return m_Vehicle.Expansion_GetTowedEntity();
+	}
+
 	override bool IsTowing()
 	{
 		return m_Vehicle.Expansion_IsTowing();
+	}
+
+	override void CreateTow(Object tow, int index)
+	{
+		m_Vehicle.Expansion_CreateTow(tow, index);
 	}
 
 	override void DestroyTow()

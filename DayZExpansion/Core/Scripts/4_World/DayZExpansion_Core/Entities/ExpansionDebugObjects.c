@@ -68,6 +68,14 @@ class ExpansionDebugObject: Building
 #endif
 	}
 
+	override void OnCEUpdate()
+	{
+		super.OnCEUpdate();
+
+		if (GetLifetime() <= 0)
+			Delete();
+	}
+
 	override void OnVariablesSynchronized()
 	{
 		super.OnVariablesSynchronized();

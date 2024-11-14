@@ -443,11 +443,15 @@ class eAICommandMove: ExpansionHumanCommandScript
 		eAIGroup group = m_Unit.GetGroup();
 		DayZPlayerImplement leader = group.GetFormationLeader();
 
-		float waterDepth;
+		vector wl;
+		EWaterLevels waterLevel = DayZPlayerUtils.CheckWaterLevel(m_Unit, wl);
+
+		float waterDepth = wl[0];
+		float characterDepth = wl[1];
+
 		if (!m_IsSwimming)
 		{
-			vector wl;
-			if (DayZPlayerUtils.CheckWaterLevel(m_Unit, wl) == EWaterLevels.LEVEL_SWIM_START)
+			if (waterLevel == EWaterLevels.LEVEL_SWIM_START)
 			{
 				m_IsSwimming = true;
 				m_Table.CallSwim(this, 1, 1.0);
@@ -459,13 +463,9 @@ class eAICommandMove: ExpansionHumanCommandScript
 				//m_Table.SetWaterLevel(this, Math.Clamp(wl[1], 0.0, 1.0));  //! Doesn't seem to be used in vanilla, can be set to force wading in water, but seems to "stick" until AI stops moving
 				m_Unit.SetCurrentWaterLevel(wl[1]);
 			}
-
-			waterDepth = wl[0];
 		}
 		else
 		{
-			waterDepth = GetWaterDepth(position);
-
 			if (waterDepth < 1.5)
 			{
 				m_IsSwimming = false;
@@ -475,7 +475,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			}
 		}
 
-		if (waterDepth < -0.5 && m_PathFinding.m_IsSwimmingEnabled)
+		if (characterDepth < -0.5 && m_PathFinding.m_IsSwimmingEnabled)
 		{
 			if (leader == m_Unit || !leader.IsSwimming())
 				m_PathFinding.EnableSwimming(false);
@@ -596,7 +596,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			}
 			else
 			{
-				if (m_Stance == 1 || m_MovementSpeed < 2.0)  //! Crouch or walk
+				if (m_Stance == 1 || m_MovementSpeed < 2.0 || m_IsSwimming || m_Unit.IsRaised())  //! Crouch, walk, swim or raised
 					speedThreshold = 1.0;
 				else
 					speedThreshold = 2.0 * m_MovementSpeed;  //! Jog/sprint
@@ -925,7 +925,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 					}
 
 				#ifdef DIAG_DEVELOPER
-					if (m_Stance != m_StancePrev)
+					if (m_Stance != m_StancePrev && m_StanceChangeTimeout <= 0.0)
 						ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " stance " + m_Stance);
 
 					m_Unit.Expansion_DebugObject_Deferred(1122, hitPosition, "ExpansionDebugSphereSmall_Red", vector.Zero, hitPosition - hitNormal);
@@ -1018,19 +1018,19 @@ class eAICommandMove: ExpansionHumanCommandScript
 			switch (m_Stance)
 			{
 				case DayZPlayerConstants.STANCEIDX_CROUCH:
-					if (waterDepth >= 0.3)  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
-						m_Stance = DayZPlayerConstants.STANCEIDX_ERECT;
+					if (characterDepth >= 0.3)  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
+						OverrideStance(DayZPlayerConstants.STANCEIDX_ERECT);
 					speedLimit = m_SpeedLimit;
 					break;
 				case DayZPlayerConstants.STANCEIDX_PRONE:
-					if (waterDepth >= 0.3)  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
+					if (characterDepth >= 0.3)  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
 					{
-						m_Stance = DayZPlayerConstants.STANCEIDX_ERECT;
+						OverrideStance(DayZPlayerConstants.STANCEIDX_ERECT);
 						speedLimit = m_SpeedLimit;
 					}
-					else if (waterDepth >= -0.5)
+					else if (characterDepth >= -0.5)
 					{
-						m_Stance = DayZPlayerConstants.STANCEIDX_CROUCH;
+						OverrideStance(DayZPlayerConstants.STANCEIDX_CROUCH);
 						speedLimit = m_SpeedLimit;
 					}
 					else if (m_Unit.IsRaised() || m_Unit.GetWeaponManager().IsRunning() || m_Unit.GetActionManager().GetRunningAction())
@@ -1527,11 +1527,28 @@ class eAICommandMove: ExpansionHumanCommandScript
 		}
 	}
 
+	/**
+	 * @brief Returns total water depth at position
+	 * 
+	 * @note returns zero value when on land
+	 */
 	float GetWaterDepth(vector position)
 	{
 		vector  wl = HumanCommandSwim.WaterLevelCheck(m_Unit, position);
 
 		return wl[0];
+	}
+
+	/**
+	 * @brief Returns how deep character is in/under water at position
+	 * 
+	 * @note returns negative value when on land
+	 */
+	float GetCharacterDepth(vector position)
+	{
+		vector  wl = HumanCommandSwim.WaterLevelCheck(m_Unit, position);
+
+		return wl[1];
 	}
 
 	override void PrePhysUpdate(float pDt)
@@ -1589,6 +1606,12 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 						//ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " mov block " + obj);
 					}
+
+					blockingObject = obj;
+				}
+				else if (obj.IsDayZCreature() && !obj.IsDamageDestroyed() && !m_Unit.IsRaised())
+				{
+					hit = true;
 
 					blockingObject = obj;
 				}

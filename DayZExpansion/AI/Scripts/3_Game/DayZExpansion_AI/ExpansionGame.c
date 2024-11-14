@@ -4,6 +4,9 @@ modded class ExpansionGame
 
 	private bool m_InGroup;
 
+	Object m_FirearmFXSource;
+	Object m_FirearmFXHitObject;
+
 	void ExpansionGame()
 	{
 		m_RPCManager.RegisterClient("RPC_SetInGroup");
@@ -51,4 +54,6 @@ modded class ExpansionGame
 	}
 
 	void SpectateAI(PlayerIdentity sender, Object target, ParamsReadContext ctx);
+
+	void FixAIFirearmFX(inout Object source, inout Object directHit, inout int componentIndex, inout string surface, inout vector pos, inout vector surfNormal, inout vector exitPos, inout vector inSpeed, inout vector outSpeed, inout bool isWater, inout bool deflected, inout string ammoType);
 };

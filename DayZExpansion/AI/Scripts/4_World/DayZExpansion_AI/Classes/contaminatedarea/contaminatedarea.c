@@ -1,6 +1,22 @@
 modded class ContaminatedArea_Base
 {
+	static ref Expansion_EffectAreas s_Expansion_ContaminatedAreas = {};
+	static ref ExpansionEffectAreaMergedClusters s_Expansion_MergedClusters = {};
+
 	ref array<eAIBase> m_eAI_AI = {};
+
+	void ContaminatedArea_Base()
+	{
+		s_Expansion_ContaminatedAreas.Insert(this);
+	}
+
+	override void InitZoneServer()
+	{
+		super.InitZoneServer();
+
+		Expansion_EffectArea_Clusters clusters = s_Expansion_ContaminatedAreas.FindClusters();
+		s_Expansion_MergedClusters = clusters.MergeClusters();
+	}
 
 	override void OnPlayerEnterServer(PlayerBase player, EffectTrigger trigger)
 	{
@@ -22,6 +38,8 @@ modded class ContaminatedArea_Base
 
 	override void EEDelete(EntityAI parent)
 	{
+		EXTrace.Print(EXTrace.AI, this, "::EEDelete");
+
 		super.EEDelete(parent);
 		
 		if (g_Game.IsServer())
@@ -30,6 +48,34 @@ modded class ContaminatedArea_Base
 			{
 				if (ai)
 					ai.eAI_ForgetContaminatedArea(this);
+			}
+
+			s_Expansion_ContaminatedAreas.RemoveItemUnOrdered(this);
+
+			//! Update cluster containing this area
+			foreach (int index, auto cluster: s_Expansion_MergedClusters)
+			{
+				int areaIndex = cluster.m_Areas.Find(this);
+
+				if (areaIndex > -1)
+				{
+					if (cluster.m_Areas.Count() > 1)
+					{
+						cluster.m_Areas.Remove(areaIndex);
+
+						EXTrace.Print(EXTrace.AI, this, "Removed from " + cluster);
+
+						cluster.Update();
+					}
+					else
+					{
+						s_Expansion_MergedClusters.Remove(index);
+
+						EXTrace.Print(EXTrace.AI, this, "Removed " + cluster);
+					}
+
+					break;
+				}
 			}
 		}
 	}

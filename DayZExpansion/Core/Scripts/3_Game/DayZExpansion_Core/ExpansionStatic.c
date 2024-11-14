@@ -777,9 +777,14 @@ class ExpansionStatic: ExpansionStaticCore
 		return dbgInfo;
 	}
 
-	static string GetHierarchyInfo(EntityAI entity)
+	static string GetHierarchyInfo(Class instance)
 	{
-		string hierarchyInfo = GetDebugInfo(entity, false);
+		string hierarchyInfo = GetDebugInfo(instance, false);
+
+		EntityAI entity;
+		if (!Class.CastTo(entity, instance))
+			return hierarchyInfo;
+
 		EntityAI parent = entity.GetHierarchyParent();
 		auto il = new InventoryLocation;
 
@@ -2346,9 +2351,11 @@ class ExpansionStatic: ExpansionStaticCore
 	 */
 	static bool IsInventoryLocked(EntityAI entity, out int lockType = 0, out EntityAI lockedEntity = null, bool checkParent = true)
 	{
-		if (entity.GetInventory().IsInventoryLocked())
+		auto inventory = entity.GetInventory();
+
+		if (inventory && inventory.IsInventoryLocked())
 		{
-			if (entity.GetInventory().IsInventoryLockedForLockType(HIDE_INV_FROM_SCRIPT))
+			if (inventory.IsInventoryLockedForLockType(HIDE_INV_FROM_SCRIPT))
 				lockType = HIDE_INV_FROM_SCRIPT;
 			else
 				lockType = LOCK_FROM_SCRIPT;

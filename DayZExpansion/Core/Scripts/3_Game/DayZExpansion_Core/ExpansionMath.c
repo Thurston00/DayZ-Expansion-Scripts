@@ -653,6 +653,59 @@ class ExpansionMath
 		return Math.Sqrt(minDistanceSq);
 	}
 
+	/**
+	 * @brief Find closest point outside cylinder that intersects the path defined by points start and end
+	 * 
+	 * @param start
+	 * @param [inout] end  will be altered in-place if path intersects cylinder
+	 * @param perpendicularDistance  positive = left, negative = right
+	 * 
+	 * @return true if path intersects cylinder, else false
+	 */
+	static bool FindClosestPointOutsideCylinder(vector start, inout vector end, vector center, float radius, float height, float perpendicularDistance = 15.0)
+	{
+		if (ExpansionMath.IsPointInCylinder(center, radius, height, start) || Math3D.IntersectRayCylinder(start, end, center, radius, height))
+		{
+			end = GetClosestPointOutsideRadius(start, end, center, radius, perpendicularDistance);
+
+			return true;
+		}
+
+		return false;
+	}
+
+	static vector GetClosestPointOutsideRadius(vector start, vector end, vector center, float radius, float perpendicularDistance = 15.0)
+	{
+		//! Calculate a perpendicular direction to avoid the cylinder
+		vector toCenter = center - start;
+		toCenter.Normalize();
+		//vector avoidanceDirectionLeft = toCenter.Perpend();
+		//vector avoidanceDirectionRight = toCenter * -1.0;
+		vector avoidanceDirection = toCenter.Perpend() * perpendicularDistance;
+
+		//! Adjust the endpoint away from the edge
+		vector outside = center - toCenter * radius;
+		//float distToEndLeftSq = vector.DistanceSq(outside + avoidanceDirectionLeft, end);
+		//float distToEndRightSq = vector.DistanceSq(outside + avoidanceDirectionRight, end);
+		//vector avoidanceDirection;
+		//if (distToEndLeftSq < distToEndRightSq)
+			//avoidanceDirection = avoidanceDirectionLeft;
+		//else
+			//avoidanceDirection = avoidanceDirectionRight;
+
+		return outside + avoidanceDirection;
+	}
+
+	static bool IsPointInCylinder(vector center, float radius, float height, vector point)
+	{
+		float halfHeight = height * 0.5;
+
+		if (point[1] < center[1] - halfHeight || point[1] > center[1] + halfHeight)
+			return false;
+
+		return Math.IsPointInCircle(center, radius, point);
+	}
+
 	static float LookUp(float value, int num, float inVals[], float outVals[])
 	{
 		value = Math.Clamp(value, inVals[0], inVals[num - 1]);

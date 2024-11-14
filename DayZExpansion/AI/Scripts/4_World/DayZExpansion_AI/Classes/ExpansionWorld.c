@@ -177,4 +177,55 @@ modded class ExpansionWorld
 	{
 		return m_AIRoamingLocations;
 	}
+
+	/**
+	 * @brief fix firearm FX for redirected AI dmg
+	 */
+	override void FixAIFirearmFX(inout Object source, inout Object directHit, inout int componentIndex, inout string surface, inout vector pos, inout vector surfNormal, inout vector exitPos, inout vector inSpeed, inout vector outSpeed, inout bool isWater, inout bool deflected, inout string ammoType)
+	{
+		if (!directHit)
+			return;
+
+		bool isClient = GetGame().IsClient();
+
+		//! source is NULL on client
+		if (isClient)
+			source = m_FirearmFXSource;
+
+		EntityAI entity;
+		eAIBase ai;
+
+		if (source && Class.CastTo(entity, source) && Class.CastTo(ai, entity.GetHierarchyRoot()))
+		{
+			Object hitObject;
+
+			if (isClient)
+				hitObject = m_FirearmFXHitObject;
+			else
+				hitObject = ai.m_eAI_HitObject;
+
+			if (hitObject && directHit != hitObject)
+			{
+				if (directHit.IsDayZCreature() || directHit.IsItemBase() || directHit.IsMan() || directHit.IsTransport())
+				{
+					pos = directHit.WorldToModel(pos);
+					exitPos = directHit.WorldToModel(exitPos);
+
+					directHit = hitObject;
+
+					pos = directHit.ModelToWorld(pos);
+					exitPos = directHit.ModelToWorld(exitPos);
+				}
+			}
+		}
+
+		if (isClient)
+			GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(ResetFirearmFXSource, 3, false, source);
+	}
+
+	void ResetFirearmFXSource(Object source)
+	{
+		if (m_FirearmFXSource == source)
+			m_FirearmFXSource = null;
+	}
 };

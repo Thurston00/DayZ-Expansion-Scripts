@@ -563,7 +563,7 @@ class eAITargetInformation
 	}
 
 	//! entity specific implementations for abstracted call in eAIEntityTargetInformation
-	void OnDeath()
+	void OnDeath(Object killer)
 	{
 #ifdef EXTRACE_DIAG
 		auto trace = EXTrace.Start(EXTrace.AI, this);
@@ -572,7 +572,11 @@ class eAITargetInformation
 		RemoveFromAll();
 	}
 
-	void OnHit()
+	void OnHit(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
+	{
+	}
+
+	void OnHealthLevelChanged(int oldLevel, int newLevel, string zone)
 	{
 	}
 

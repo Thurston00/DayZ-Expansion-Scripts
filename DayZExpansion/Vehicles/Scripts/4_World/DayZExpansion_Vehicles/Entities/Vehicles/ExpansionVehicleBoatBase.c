@@ -147,13 +147,4 @@ class ExpansionVehicleBoatBase: ExpansionVehicleCarBase
 
 		return 12;
 	}
-
-	override bool Expansion_CanConnectTow(notnull Object other)
-	{
-#ifdef EXPANSIONTRACE
-		auto trace = CF_Trace_1(ExpansionTracing.VEHICLES, this, "Expansion_CanConnectTow").Add(other);
-#endif
-
-		return false;
-	}
 };

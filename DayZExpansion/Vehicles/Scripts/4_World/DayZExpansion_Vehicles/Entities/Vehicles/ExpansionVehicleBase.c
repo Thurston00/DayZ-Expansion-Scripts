@@ -222,8 +222,6 @@ class ExpansionVehicleBase: ExpansionVehicleBaseBase
 	static const int SELECTION_ID_DASHBOARD_LIGHT = 8;
 
 	autoptr ExpansionZoneActor m_Expansion_SafeZoneInstance = new ExpansionZoneEntity<ExpansionVehicleBase>(this);
-	bool m_Expansion_IsInSafeZone;
-	protected bool m_Expansion_IsInSafeZone_DeprecationWarning;
 
 	protected bool m_Expansion_IsStoreLoaded;
 	protected bool m_Expansion_IsStoreSaved;
@@ -1358,10 +1356,7 @@ class ExpansionVehicleBase: ExpansionVehicleBaseBase
 	 */
 	void OnEnterZone(ExpansionZoneType type)
 	{
-		if (type != ExpansionZoneType.SAFE)
-			return;
-
-		m_Expansion_IsInSafeZone = true;
+		m_ExpansionVehicle.OnEnterZone(type);
 	}
 
 	/**
@@ -1369,10 +1364,7 @@ class ExpansionVehicleBase: ExpansionVehicleBaseBase
 	 */
 	void OnExitZone(ExpansionZoneType type)
 	{
-		if (type != ExpansionZoneType.SAFE)
-			return;
-
-		m_Expansion_IsInSafeZone = false;
+		m_ExpansionVehicle.OnExitZone(type);
 	}
 
 	override bool EEOnDamageCalculated(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
@@ -4385,13 +4377,14 @@ class ExpansionVehicleBase: ExpansionVehicleBaseBase
 	
 	bool IsInSafeZone()
 	{
-		Expansion_Error("DEPRECATED: Please use Expansion_IsInSafeZone", m_Expansion_IsInSafeZone_DeprecationWarning);
-		return Expansion_IsInSafeZone();
+		EXError.Error(this, "DEPRECATED, use GetExpansionVehicle().IsInSafeZone");
+		return m_ExpansionVehicle.IsInSafeZone();
 	}
 
 	bool Expansion_IsInSafeZone()
 	{
-		return m_Expansion_IsInSafeZone;
+		EXError.Error(this, "DEPRECATED, use GetExpansionVehicle().IsInSafeZone");
+		return m_ExpansionVehicle.IsInSafeZone();
 	}
 	
 	set<Human> Expansion_GetVehicleCrew(bool playersOnly = true, bool includeAttached = true)

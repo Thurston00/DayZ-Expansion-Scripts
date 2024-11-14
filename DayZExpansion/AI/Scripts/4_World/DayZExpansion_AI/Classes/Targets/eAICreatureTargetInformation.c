@@ -70,7 +70,7 @@ class eAICreatureTargetInformation: eAIEntityTargetInformation
 
 	override float GetMinDistance(eAIBase ai = null, float distance = 0.0)
 	{
-		if (ai && (ai.m_eAI_AcuteDangerTargetCount > 2 || ai.eAI_IsLowVitals() || (!ai.m_eAI_HasProjectileWeaponInHands && m_Creature.m_Expansion_IsBigGame)))
+		if (ai && (ai.m_eAI_AcuteDangerTargetCount > 2 || ai.eAI_IsLowVitals() || (!ai.m_eAI_HasProjectileWeaponInHands && m_Creature.m_Expansion_IsBigGame && !ai.GetGroup().GetFaction().GetMeleeDamageMultiplier() < 100)))
 			return 100.0;  //! Flee
 
 		return m_MinDistance;

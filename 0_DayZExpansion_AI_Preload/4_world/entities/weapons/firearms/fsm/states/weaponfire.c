@@ -11,7 +11,7 @@ modded class WeaponFire
 		
 				if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " WeaponFire bang!"); }
 				int mi = m_weapon.GetCurrentMuzzle();
-				if (m_weapon.eAI_Fire(mi, p.GetBonePositionWS(p.GetBoneIndexByName("neck")), p.GetWeaponAimDirection(), vector.Forward))
+				if (m_weapon.eAI_Fire(mi, p))
 				{
 					p.GetAimingModel().SetRecoil(m_weapon);
 					m_weapon.OnFire(mi);
@@ -37,7 +37,7 @@ modded class WeaponFireWithEject
 
 				if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " WeaponFire bang!"); }
 				int mi = m_weapon.GetCurrentMuzzle();
-				if (m_weapon.eAI_Fire(mi, p.GetBonePositionWS(p.GetBoneIndexByName("neck")), p.GetWeaponAimDirection(), vector.Forward))
+				if (m_weapon.eAI_Fire(mi, p))
 				{
 					p.GetAimingModel().SetRecoil(m_weapon);
 					m_weapon.EjectCasing(mi);
@@ -72,7 +72,7 @@ modded class WeaponFireMultiMuzzle
 					
 					for (int i = 0; i < b; i++)
 					{
-						if (m_weapon.eAI_Fire(i, p.GetBonePositionWS(p.GetBoneIndexByName("neck")), p.GetWeaponAimDirection(), vector.Forward))
+						if (m_weapon.eAI_Fire(i, p))
 						{
 							p.GetAimingModel().SetRecoil(m_weapon);
 							m_weapon.OnFire(i);
@@ -81,7 +81,7 @@ modded class WeaponFireMultiMuzzle
 				}
 				else
 				{
-					if (m_weapon.eAI_Fire(mi, p.GetBonePositionWS(p.GetBoneIndexByName("neck")), p.GetWeaponAimDirection(), vector.Forward))
+					if (m_weapon.eAI_Fire(mi, p))
 					{
 						p.GetAimingModel().SetRecoil(m_weapon);
 						m_weapon.OnFire(mi);
@@ -112,7 +112,7 @@ modded class WeaponFireToJam
 
 				if (LogManager.IsWeaponLogEnable()) { wpnPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " WeaponFire bang! and jam?"); }
 				int mi = m_weapon.GetCurrentMuzzle();
-				if (m_weapon.eAI_Fire(mi, p.GetBonePositionWS(p.GetBoneIndexByName("neck")), p.GetWeaponAimDirection(), vector.Forward))
+				if (m_weapon.eAI_Fire(mi, p))
 				{
 					m_weapon.SetJammed(true);
 					p.GetAimingModel().SetRecoil(m_weapon);

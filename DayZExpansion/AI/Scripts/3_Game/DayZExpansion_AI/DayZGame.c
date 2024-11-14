@@ -73,21 +73,22 @@ modded class DayZGame
 		}
 	}
 
-	/* Probably not necessary for AI to react to bullet impact, enough if they can hear the shot (source)
 	override void FirearmEffects(Object source, Object directHit, int componentIndex, string surface, vector pos, vector surfNormal,
 		 vector exitPos, vector inSpeed, vector outSpeed, bool isWater, bool deflected, string ammoType) 
-	 {
-		 super.FirearmEffects(source, directHit, componentIndex, surface, pos, surfNormal,
-		 exitPos, inSpeed, outSpeed, isWater, deflected, ammoType);
+	{
+		GetExpansionGame().FixAIFirearmFX(source, directHit, componentIndex, surface, pos, surfNormal, exitPos, inSpeed, outSpeed, isWater, deflected, ammoType);
 
+		super.FirearmEffects(source, directHit, componentIndex, surface, pos, surfNormal, exitPos, inSpeed, outSpeed, isWater, deflected, ammoType);
+
+	/* Probably not necessary for AI to react to bullet impact, enough if they can hear the shot (source)
 		if (IsServer())
 		{
 			float surfaceCoef = SurfaceGetNoiseMultiplier(directHit, pos, componentIndex);
 			float coefAdjusted = surfaceCoef * inSpeed.Length() / ConfigGetFloat("cfgAmmo " + ammoType + " initSpeed");
 			eAINoiseSystem.AddNoise(pos, 10.0, string.Format("cfgAmmo %1 NoiseHit", ammoType), coefAdjusted);
 		}
-	 }
-	 */
+	*/
+	}
 
 	override void CloseCombatEffects(Object source, Object directHit, int componentIndex, string surface, vector pos, vector surfNormal, bool isWater, string ammoType) 
 	{

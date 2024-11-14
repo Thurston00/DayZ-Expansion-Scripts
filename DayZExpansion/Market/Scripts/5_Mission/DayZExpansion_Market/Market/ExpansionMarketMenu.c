@@ -3287,12 +3287,13 @@ class ExpansionMarketMenu: ExpansionScriptViewMenu
 			market_menu_content.Show(false);
 			m_MarketMenuItemManager.SetMarketItem(GetSelectedMarketItem());
 			m_MarketMenuItemManager.Show();
+			market_item_preview.Show(false);
 		}
 		else
 		{
 			market_menu_content.Show(true);
 			m_MarketMenuItemManager.Hide();
-			
+			market_item_preview.Show(true);
 		}
 	}
 

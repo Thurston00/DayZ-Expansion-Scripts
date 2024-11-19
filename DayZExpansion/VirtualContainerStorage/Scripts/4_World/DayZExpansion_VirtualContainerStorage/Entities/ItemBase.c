@@ -13,6 +13,8 @@
 modded class ItemBase
 {
 	bool m_Expansion_HasEntityStorage;
+	bool m_Expansion_DeferredDeleteEntityStorageFiles;
+	bool m_Expansion_DeletingContents;
 	bool m_Expansion_RestoringContents;
 
 	override void DeferredInit()
@@ -22,12 +24,30 @@ modded class ItemBase
 		if (GetGame().IsServer() && GetGame().IsMultiplayer() && m_Expansion_GlobalID)
 		{
 			m_Expansion_HasEntityStorage = Expansion_HasEntityStorage();
-			SetSynchDirty();
 
-			//! Prevent dupes
-			if (m_Expansion_HasEntityStorage && !Expansion_IsEmptyIgnoringLockedSlots())
-				Expansion_DeleteContentsExceptLockedSlots();
+			if (m_Expansion_HasEntityStorage)
+			{
+				//! Prevent dupes
+				if (!Expansion_IsEmptyIgnoringLockedSlots() && ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex()))
+					m_Expansion_HasEntityStorage = false;
+
+				SetSynchDirty();
+			}
 		}
+	}
+
+	override void EECargoOut(EntityAI item)
+	{
+		super.EECargoOut(item);
+
+		Expansion_DeleteEntityStorageFilesIfEmpty();
+	}
+
+	override void EEItemDetached(EntityAI item, string slot_name)
+	{
+		super.EEItemDetached(item, slot_name);
+
+		Expansion_DeleteEntityStorageFilesIfEmpty();
 	}
 
 	override void EEDelete(EntityAI parent)
@@ -131,6 +151,32 @@ modded class ItemBase
 		return true;
 	}
 
+#ifdef EXPANSION_MODSTORAGE
+	override void CF_OnStoreSave(CF_ModStorageMap storage)
+	{
+		super.CF_OnStoreSave(storage);
+
+		if (m_Expansion_DeferredDeleteEntityStorageFiles)
+		{
+			array<EntityAI> contents = {};
+			ItemBase item;
+
+			GetInventory().EnumerateInventory(InventoryTraversalType.PREORDER, contents);
+
+			foreach (EntityAI entity: contents)
+			{
+				if (Class.CastTo(item, entity) && !item.m_Expansion_IsStoreSaved)
+					return;  //! Return early if any contents not yet persisted
+			}
+
+			//! All contents have been persisted, we are safe to delete the entity storage file
+			ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex());
+
+			m_Expansion_DeferredDeleteEntityStorageFiles = false;
+		}
+	}
+#endif
+
 	bool Expansion_HasEntityStorage()
 	{
 		if (GetGame().IsClient())
@@ -163,6 +209,8 @@ modded class ItemBase
 
 	void Expansion_DeleteContentsExceptLockedSlots()
 	{
+		m_Expansion_DeletingContents = true;
+
 		int i;
 		if (!ExpansionIsOpenable() && !IsNonExpansionOpenable())
 		{
@@ -188,6 +236,14 @@ modded class ItemBase
 					GetGame().ObjectDelete(item);
 			}
 		}
+
+		m_Expansion_DeletingContents = false;
+	}
+
+	void Expansion_DeleteEntityStorageFilesIfEmpty()
+	{
+		if (!GetGame().IsClient() && !m_Expansion_DeletingContents && Expansion_HasEntityStorage() && Expansion_IsEmptyIgnoringLockedSlots())
+			ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex());
 	}
 
 	bool Expansion_IsEmptyIgnoringLockedSlots()
@@ -220,8 +276,16 @@ modded class ItemBase
 
 	override bool Expansion_StoreContents()
 	{
-		if (m_Expansion_HasEntityStorage || Expansion_IsEmptyIgnoringLockedSlots())
+		if (m_Expansion_HasEntityStorage)
 			return false;
+
+		if (Expansion_IsEmptyIgnoringLockedSlots())
+		{
+			if (Expansion_HasEntityStorage())
+				ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex());
+
+			return false;
+		}
 
 		if (!m_Expansion_GlobalID.m_IsSet)
 			m_Expansion_GlobalID.Acquire();
@@ -235,6 +299,7 @@ modded class ItemBase
 			EXTrace.Print(EXTrace.GENERAL_ITEMS, this, "::Expansion_StoreContents - " + GetPosition() + " - is inventory empty (ignoring locked slots)? " + Expansion_IsEmptyIgnoringLockedSlots());
 
 			m_Expansion_HasEntityStorage = true;
+			m_Expansion_DeferredDeleteEntityStorageFiles = false;
 			SetSynchDirty();
 
 			return true;
@@ -260,12 +325,16 @@ modded class ItemBase
 				SetHealth01("", "", 1.0);
 
 			EntityAI entity = this;
-			bool success = ExpansionEntityStorageModule.RestoreFromFile(Expansion_GetEntityStorageFileName(), entity);
+			//! When storage contents are loaded into the container, keep files
+			//! to avoid data loss in case of server crash before the container was persisted.
+			//! After container was persisted, storage files are deleted in CF_OnStoreSave.
+			bool success = ExpansionEntityStorageModule.RestoreFromFile(Expansion_GetEntityStorageFileName(), entity, null, null, false);
 			if (success)
 			{
 				EXTrace.Print(EXTrace.GENERAL_ITEMS, this, "::Expansion_RestoreContents - " + GetPosition() + " - restored inventory with storage ID " + m_Expansion_GlobalID.IDToHex());
 
 				m_Expansion_HasEntityStorage = false;
+				m_Expansion_DeferredDeleteEntityStorageFiles = true;
 				SetSynchDirty();
 			}
 			else

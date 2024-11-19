@@ -85,6 +85,7 @@ modded class ItemBase
 			return;
 		}
 
+		//! TODO: Latest 1.26 patch on 2024-11-19 added OnChildItemReceived which would be a better place for the following code
 		if (!GetGame().IsServer())
 			return;
 
@@ -97,6 +98,7 @@ modded class ItemBase
 	{
 		super.OnInventoryExit(player);
 
+		//! TODO: Latest 1.26 patch on 2024-11-19 added OnChildItemRemoved which would be a better place for the following code
 		if (!GetGame().IsServer())
 			return;
 

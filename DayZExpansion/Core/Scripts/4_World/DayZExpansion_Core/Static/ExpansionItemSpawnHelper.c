@@ -164,7 +164,8 @@ class ExpansionItemSpawnHelper
 
 		EntityAI entity;
 		ExpansionTemporaryOwnedContainer newStorage;
-		ExpansionTemporaryOwnedContainer playerStorage = player.Expansion_GetTemporaryOwnedContainer();
+		ExpansionTemporaryOwnedContainer existingPlayerStorage = player.Expansion_GetTemporaryOwnedContainer();
+		ExpansionTemporaryOwnedContainer playerStorage = existingPlayerStorage;
 		ExpansionTemporaryOwnedContainer storage;
 
 		/**
@@ -211,7 +212,7 @@ class ExpansionItemSpawnHelper
 			}
 		}
 
-		if (storage && !playerStorage)
+		if (storage && !existingPlayerStorage)
 			GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Call(TemporaryStorageNotification, player.GetIdentity());
 
 		return entity;
@@ -284,7 +285,7 @@ class ExpansionItemSpawnHelper
 		//! First, we try to spawn item in parent inventory directly.
 		//! This can fail if parent is player even if player has clothing that still has enough space, so, ...
 		if (forceCheckCanReceiveItem)
-			newEntity = CreateAndMoveToInventory(parent, type/*, true*/);
+			newEntity = CreateAndMoveToInventory(parent, type, true);
 		else
 			newEntity = parent.GetInventory().CreateInInventory(type);
 
@@ -321,7 +322,7 @@ class ExpansionItemSpawnHelper
 					//! We don't even attempt to create the item if it wouldn't fit anyway due to size
 					if (cargoMax >= itemMax && cargoMin >= itemMin)
 					{
-						newEntity = CreateAndMoveToInventory(parent, type/*, forceCheckCanReceiveItem*/);
+						newEntity = CreateAndMoveToInventory(parent, type, forceCheckCanReceiveItem);
 						if (newEntity)
 							return newEntity;
 					}
@@ -350,7 +351,7 @@ class ExpansionItemSpawnHelper
 
 	//! Unlike GameInventory::CreateInInventory, this deals with rotating the item if it doesn't fit otherwise
 	//! and checks if parent can actually receive the created item
-	static EntityAI CreateAndMoveToInventory(EntityAI parent, string type/*, bool forceCheckCanReceiveItem = true*/)
+	static EntityAI CreateAndMoveToInventory(EntityAI parent, string type, bool forceCheckCanReceiveItem = true)
 	{
 		EntityAI newEntity;
 
@@ -362,40 +363,50 @@ class ExpansionItemSpawnHelper
 
 			if (newEntity.GetInventory().GetCurrentInventoryLocation(src) && parent.GetInventory().FindFreeLocationFor(newEntity, FindInventoryLocationType.ATTACHMENT | FindInventoryLocationType.CARGO | FindInventoryLocationType.HANDS, dst))
 			{
-				//! @note GameInventory::TakeToDst performs the below checks for us, keeping them commented out just in case
-				/*
-				bool takeToDst = !forceCheckCanReceiveItem;
+				//! @note GameInventory::TakeToDst performs the below checks for atts/cargo but we need to deal with hands
+				bool canTakeToDst = !forceCheckCanReceiveItem;
 
 				if (forceCheckCanReceiveItem)
 				{
 					switch (dst.GetType())
 					{
 						case InventoryLocationType.ATTACHMENT:
-							takeToDst = parent.CanReceiveAttachment(newEntity, dst.GetSlot());
+							//! TakeToDst already deals with this, but for good measure
+							canTakeToDst = parent.CanReceiveAttachment(newEntity, dst.GetSlot());
 							break;
 
 						case InventoryLocationType.CARGO:
-							takeToDst = parent.CanReceiveItemIntoCargo(newEntity);
+							//! TakeToDst already deals with this, but for good measure
+							canTakeToDst = parent.CanReceiveItemIntoCargo(newEntity);
 							break;
 
 						case InventoryLocationType.HANDS:
-							takeToDst = parent.CanReceiveItemIntoHands(newEntity);
+							//! Special snowflake: Hands, since it redirects to hand event (async!)
+							//! TakeToDst can NOT check this when creating several items in the same server tick!
+							PlayerBase player;
+							if (Class.CastTo(player, parent) && player.Expansion_PrepareTakeEntityToHands(newEntity))
+								canTakeToDst = true;
 							break;
 					}
 				}
-				*/
 
 				//! Special snowflake: Hands. Has to use ServerTakeToDst, not LocalTakeDst, else desync. WHY game, WHY.
 				//! Just use ServerTakeToDst always.
-				if (/*takeToDst && */parent.ServerTakeToDst(src, dst))
+				if (canTakeToDst)
 				{
 				#ifdef SERVER
+					//! This has to be called before ServerTakeToDst else weird things can happen with lifetime
 					GetGame().RemoteObjectTreeCreate(newEntity);
 				#endif
-				#ifdef DIAG_DEVELOPER
-					EXTrace.Print(EXTrace.GENERAL_ITEMS, ExpansionItemSpawnHelper, "::CreateAndMoveToInventory - created & moved " + newEntity + " to " + parent);
-				#endif
-					return newEntity;
+
+					if (parent.ServerTakeToDst(src, dst))
+					{
+					#ifdef DIAG_DEVELOPER
+						EXTrace.Print(EXTrace.GENERAL_ITEMS, ExpansionItemSpawnHelper, "::CreateAndMoveToInventory - created & moved " + newEntity + " to " + parent);
+					#endif
+
+						return newEntity;
+					}
 				}
 			}
 

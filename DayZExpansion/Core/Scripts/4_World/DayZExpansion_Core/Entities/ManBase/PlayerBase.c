@@ -56,6 +56,8 @@ modded class PlayerBase
 
 	ref ExpansionEntity m_Expansion_Entity;
 
+	EntityAI m_Expansion_EntityToBeTakenToHands;
+
 	void PlayerBase()
 	{
 		m_Expansion_Node = s_Expansion_AllPlayers.Add(this);
@@ -1075,6 +1077,28 @@ modded class PlayerBase
 	{
 		type.ToLower();
 		return m_Expansion_InventoryItemTypes[type];
+	}
+
+	bool Expansion_PrepareTakeEntityToHands(EntityAI entity)
+	{
+		if (!GetHumanInventory().CanAddEntityInHands(entity))
+			return false;
+
+		if (!m_Expansion_EntityToBeTakenToHands)
+			m_Expansion_EntityToBeTakenToHands = entity;
+
+		if (m_Expansion_EntityToBeTakenToHands == entity)
+			return true;
+
+		return false;
+	}
+
+	override void EEItemIntoHands(EntityAI item)
+	{
+		super.EEItemIntoHands(item);
+
+		if (m_Expansion_EntityToBeTakenToHands == item)
+			m_Expansion_EntityToBeTakenToHands = null;
 	}
 	
 #ifdef EXPANSION_MODSTORAGE

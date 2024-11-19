@@ -39,6 +39,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 	private vector m_Waypoint;
 	private vector m_PathDir;
 	private vector m_PathDirNormalized;
+	private vector m_PathAngles;
 	private vector m_PathDir2D;
 	private vector m_PathDir2DNormalized;
 	private float m_WaypointTime;
@@ -82,6 +83,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 	private int m_Stance = -1;
 	private int m_StancePrev = -1;
+	private bool m_ForceStance;
 	private float m_StanceChangeTimeout;
 
 	Object m_BlockingObject;
@@ -278,14 +280,13 @@ class eAICommandMove: ExpansionHumanCommandScript
 	{
 		if (m_Stance != stance)
 		{
-			if (force)
-				m_StancePrev = -1;
+			m_ForceStance = force;
 
 			m_Stance = stance;
 			m_Unit.m_eAI_StancePreference = stance;
 
 		//#ifdef DIAG_DEVELOPER
-			//ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " override stance " + m_Stance + " " + force);
+			//ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " override stance " + m_StancePrev + " -> " + m_Stance + " " + force);
 		//#endif
 
 			return true;
@@ -379,8 +380,9 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 			m_PathDir = vector.Direction(position, waypoint);
 			m_PathDirNormalized = m_PathDir.Normalized();
-			m_PathDir2D = vector.Direction(position, Vector(waypoint[0], position[1], waypoint[2]));
-			m_PathDir2DNormalized = m_PathDir2D.Normalized();
+			m_PathAngles = m_PathDirNormalized.VectorToAngles();
+			m_PathDir2D = Vector(m_PathDir[0], 0.0, m_PathDir[2]);
+			m_PathDir2DNormalized = Vector(m_PathDirNormalized[0], 0.0, m_PathDirNormalized[2]);
 
 			//if (isTargetPositionFinal && m_PathFinding.m_IsUnreachable)
 			if (isPathPointFinal && !m_PathFinding.m_IsUnreachable)
@@ -536,8 +538,13 @@ class eAICommandMove: ExpansionHumanCommandScript
 			m_TurnOverride = 0;
 		}
 
-		//! Try and avoid obstacles if we are moving and not climbing
-		if (m_MovementSpeed && !m_Unit.IsClimbing() && !m_Unit.IsFalling() && !m_Unit.IsFighting())
+		bool isBusy;
+
+		if (m_Unit.IsClimbing() || m_Unit.IsFalling() || m_Unit.IsFighting())
+			isBusy = true;
+
+		//! Try and avoid obstacles if we are moving and not busy with other actions
+		if (m_MovementSpeed && !isBusy)
 		{
 			vector leftPos;
 			vector rightPos;
@@ -590,13 +597,13 @@ class eAICommandMove: ExpansionHumanCommandScript
 			 * Sprint           ~2.03242218       ~4.130739
 			 */
 			float speedThreshold;
-			if (m_Stance == 2)  //! Prone
+			if (m_Stance == DayZPlayerConstants.STANCEIDX_PRONE)  //! Prone
 			{
 				speedThreshold = 0.1;
 			}
 			else
 			{
-				if (m_Stance == 1 || m_MovementSpeed < 2.0 || m_IsSwimming || m_Unit.IsRaised())  //! Crouch, walk, swim or raised
+				if (m_Stance == DayZPlayerConstants.STANCEIDX_CROUCH || m_MovementSpeed < 2.0 || m_IsSwimming || m_Unit.IsRaised())  //! Crouch, walk, swim or raised
 					speedThreshold = 1.0;
 				else
 					speedThreshold = 2.0 * m_MovementSpeed;  //! Jog/sprint
@@ -897,51 +904,6 @@ class eAICommandMove: ExpansionHumanCommandScript
 				}
 			}
 
-			if (!IsChangingStance() && !m_Unit.IsSwimming())
-			{
-				vector head = m_Unit.GetBonePositionWS(m_Unit.GetBoneIndexByName("head"));
-				vector hitPosition;
-				vector hitNormal;
-				int contactComponent;
-				set<Object> results = new set<Object>;
-				if (DayZPhysics.RaycastRV(head, head + "0 0.2 0", hitPosition, hitNormal, contactComponent, results, null, m_Unit, false, false, ObjIntersectView) && results.Count() && ObjectCanLimitStance(results[0]))
-				{
-					if (m_Unit.m_eAI_StancePreference == -1)
-					{
-						m_Unit.m_eAI_StancePreference = DayZPlayerConstants.STANCEIDX_ERECT;
-
-					#ifdef DIAG_DEVELOPER
-						ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " stance pref " + m_Unit.m_eAI_StancePreference);
-					#endif
-					}
-
-					if (m_Stance == DayZPlayerConstants.STANCEIDX_ERECT || m_Stance == -1)
-					{
-						m_Stance = DayZPlayerConstants.STANCEIDX_CROUCH;
-					}
-					else if (m_Stance == DayZPlayerConstants.STANCEIDX_CROUCH)
-					{
-						m_Stance = DayZPlayerConstants.STANCEIDX_PRONE;
-					}
-
-				#ifdef DIAG_DEVELOPER
-					if (m_Stance != m_StancePrev && m_StanceChangeTimeout <= 0.0)
-						ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " stance " + m_Stance);
-
-					m_Unit.Expansion_DebugObject_Deferred(1122, hitPosition, "ExpansionDebugSphereSmall_Red", vector.Zero, hitPosition - hitNormal);
-				#endif
-				}
-				else if (m_Unit.m_eAI_StancePreference != -1 && m_Stance != m_Unit.m_eAI_StancePreference && !DayZPhysics.RaycastRV(position + "0 0.3 0", position + Vector(0, (2.0 - m_Unit.m_eAI_StancePreference) * 0.9, 0), hitPosition, hitNormal, contactComponent, results, null, m_Unit, false, false, ObjIntersectView, 0.1))
-				{
-					m_StancePrev = -1;
-					m_Stance = m_Unit.m_eAI_StancePreference;
-
-				#ifdef DIAG_DEVELOPER
-					ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " restoring stance pref " + m_Unit.m_eAI_StancePreference);
-				#endif
-				}
-			}
-
 #ifdef DIAG_DEVELOPER
 			if (m_OverrideTargetMovementDirection != overrideTargetMovementDirection)
 				chg = true;
@@ -1047,9 +1009,12 @@ class eAICommandMove: ExpansionHumanCommandScript
 					break;
 			}
 
-			//! Limit speed to jog when moving bwd or avoiding obstacles
-			if ((Math.AbsFloat(m_MovementDirection) > 90 || m_OverrideMovementTimeout > 0) && speedLimit > 2)
-				speedLimit = 2;
+			//! Limit speed to jog when moving bwd, avoiding obstacles, or going downhill
+			if (speedLimit > 2)
+			{
+				if (Math.AbsFloat(m_MovementDirection) > 90 || m_OverrideMovementTimeout > 0 || ExpansionMath.RelAngle(m_PathAngles[1]) < -40.0)
+					speedLimit = 2;
+			}
 		}
 
 		if (waypoint != position)
@@ -1062,7 +1027,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			if (ShouldRecalculateTurnTarget())
 			{
 				//! Turn to waypoint while moving
-				m_TurnTarget = m_PathDir2DNormalized.VectorToAngles()[0];
+				m_TurnTarget = m_PathAngles[0];
 			}
 
 			if (m_TurnOverride)
@@ -1232,7 +1197,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			if (ExpansionMath.Distance2DSq(position, m_PathFinding.GetEnd()) >= m_MinFinal)
 				SetTargetSpeed(Math.Lerp(m_MovementSpeed, Math.Min(1.0, speedLimit), pDt * 2.0));
 		}
-		else if (m_Unit.IsRaised() || ExpansionMath.RelAngle(m_PathDirNormalized.VectorToAngles()[1]) < -40.0)
+		else if (m_Unit.IsRaised())
 		{
 		//#ifdef DIAG_DEVELOPER
 			//dbgObj = m_Unit.m_Expansion_DebugObjects[11108];
@@ -1324,11 +1289,72 @@ class eAICommandMove: ExpansionHumanCommandScript
 		}
 	#endif
 
-		if (m_Stance != -1 && m_Stance != m_StancePrev && m_StanceChangeTimeout <= 0.0 && !m_Unit.IsClimbing() && !m_Unit.IsFalling() && !m_Unit.IsFighting() && !m_Unit.IsSwimming() && !m_Unit.GetEmoteManager().IsEmotePlaying())
+		if (m_Stance != -1 && (m_Stance != m_StancePrev || m_ForceStance) && m_StanceChangeTimeout <= 0.0 && !isBusy && !m_Unit.IsSwimming() && !m_Unit.GetEmoteManager().IsEmotePlaying())
 		{
+			//! Can't go from erect to prone or prone to erect directly, need to crouch first
+			//! else it breaks character to surface alignment and hitbox
+			switch (m_StancePrev)
+			{
+				case DayZPlayerConstants.STANCEIDX_ERECT:
+				case DayZPlayerConstants.STANCEIDX_PRONE:
+					if (m_Stance != DayZPlayerConstants.STANCEIDX_CROUCH)
+						m_Stance = DayZPlayerConstants.STANCEIDX_CROUCH;
+					break;
+			}
+
+		#ifdef DIAG_DEVELOPER
+			ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " set stance " + m_StancePrev + " -> " + m_Stance);
+		#endif
+
 			m_Table.SetStance(this, m_Stance);
 			m_StanceChangeTimeout = 0.5 * Math.AbsFloat(Math.Max(m_StancePrev, 0) - m_Stance);
 			m_StancePrev = m_Stance;
+			m_ForceStance = false;
+		}
+
+		if (!IsChangingStance() && !isBusy && !m_Unit.IsSwimming() && !m_Unit.GetEmoteManager().IsEmotePlaying())
+		{
+			vector head = m_Unit.GetBonePositionWS(m_Unit.GetBoneIndexByName("head"));
+			vector hitPosition;
+			vector hitNormal;
+			int contactComponent;
+			set<Object> results = new set<Object>;
+			if (DayZPhysics.RaycastRV(head, head + "0 0.2 0", hitPosition, hitNormal, contactComponent, results, null, m_Unit, false, false, ObjIntersectView) && results.Count() && ObjectCanLimitStance(results[0]))
+			{
+				if (m_Unit.m_eAI_StancePreference == -1)
+				{
+					m_Unit.m_eAI_StancePreference = DayZPlayerConstants.STANCEIDX_ERECT;
+
+				#ifdef DIAG_DEVELOPER
+					ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " stance pref " + m_Unit.m_eAI_StancePreference);
+				#endif
+				}
+
+				if (m_Stance == DayZPlayerConstants.STANCEIDX_ERECT || m_Stance == -1)
+				{
+					m_Stance = DayZPlayerConstants.STANCEIDX_CROUCH;
+				}
+				else if (m_Stance == DayZPlayerConstants.STANCEIDX_CROUCH)
+				{
+					m_Stance = DayZPlayerConstants.STANCEIDX_PRONE;
+				}
+
+			#ifdef DIAG_DEVELOPER
+				if (m_Stance != m_StancePrev && m_StanceChangeTimeout <= 0.0)
+					ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " adjust stance " + m_Stance);
+
+				m_Unit.Expansion_DebugObject_Deferred(1122, hitPosition, "ExpansionDebugSphereSmall_Red", vector.Zero, hitPosition - hitNormal);
+			#endif
+			}
+			else if (m_Unit.m_eAI_StancePreference != -1 && m_Stance != m_Unit.m_eAI_StancePreference && !DayZPhysics.RaycastRV(position + "0 0.3 0", position + Vector(0, 0.3 + (2.0 - m_Unit.m_eAI_StancePreference) * 0.75, 0), hitPosition, hitNormal, contactComponent, results, null, m_Unit, false, false, ObjIntersectView, 0.1))
+			{
+				m_ForceStance = true;
+				m_Stance = m_Unit.m_eAI_StancePreference;
+
+			#ifdef DIAG_DEVELOPER
+				ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " restoring stance pref " + m_Unit.m_eAI_StancePreference);
+			#endif
+			}
 		}
 
 		if (speedLimit == 0)
@@ -1650,7 +1676,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 						m_PathFinding.m_IsTargetUnreachable = true;
 						m_PathFinding.m_IsUnreachable = true;
 					}
-					else
+					else if (m_BlockedTime > 0.5)
 					{
 						m_PathFinding.ForceRecalculate();
 					}

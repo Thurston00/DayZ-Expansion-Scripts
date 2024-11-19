@@ -96,7 +96,6 @@ class eAIBase: PlayerBase
 	private vector m_eAI_LastMovementCheckUnitPosition;
 	private float m_eAI_MovementCheckTimeout;
 
-	private bool m_eAI_IsChangingStance;
 	private bool m_eAI_ShouldGetUp = true;
 	int m_eAI_StancePreference = -1;
 
@@ -121,6 +120,7 @@ class eAIBase: PlayerBase
 	private int m_MovementSpeedLimit = 3;
 	private int m_MovementSpeedLimitUnderThreat = 3;
 	int m_eAI_RoamingMovementSpeedLimit;
+	int m_eAI_SpeedLimitPreference = 3;
 	private bool m_MovementDirectionActive;
 	protected bool m_eAI_ResetMovementDirectionActive;
 	private float m_MovementDirection;
@@ -482,7 +482,7 @@ class eAIBase: PlayerBase
 			return;
 
 		eAIGroup group = GetGroup();
-		if (group && group.m_Persist && group.m_BaseName && group.GetLeader() == this)
+		if (group && group.m_Persist && group.m_BaseName && group.GetFormationLeader() == this)
 		{
 			//! Persist one AI group per CE update interval (except if no players online, always persist)
 
@@ -2348,8 +2348,11 @@ class eAIBase: PlayerBase
 		Weapon_Base currentWeapon;
 		Weapon_Base compareWeapon;
 
-		if (!Class.CastTo(currentWeapon, currentItem) || !Class.CastTo(compareWeapon, compareItem))
-			return false;
+		if (!Class.CastTo(compareWeapon, compareItem))
+			return false;  //! If compared item is not weapon, prefer current item (even if null)
+
+		if (!Class.CastTo(currentWeapon, currentItem))
+			return true;  //! If current item is not weapon, prefer compared item (weapon, not null)
 
 		ExpansionWeaponType currentWeaponType = currentWeapon.Expansion_GetWeaponType();
 		ExpansionWeaponType compareWeaponType = compareWeapon.Expansion_GetWeaponType();
@@ -2379,11 +2382,17 @@ class eAIBase: PlayerBase
 
 		if (currentDPS > 0.0 && compareDPS > 0.0 && currentWeapon.GetInventory().AttachmentCount() < compareWeapon.GetInventory().AttachmentCount())
 		{
+		#ifdef DIAG_DEVELOPER
+			EXTrace.Print(EXTrace.AI, this, string.Format("eAI_WeaponSelection cur=%1 dps=%2 attCount=%3 cmp=%4 dps=%5 attCount=%6 curdps/cmpdps=%7", currentWeapon, currentDPS, currentWeapon.GetInventory().AttachmentCount(), compareWeapon, compareDPS, compareWeapon.GetInventory().AttachmentCount(),compareDPS / currentDPS));
+		#endif
 			if (compareDPS / currentDPS > 0.75)
 				return true;
 		}
 		else if (compareDPS > currentDPS)
 		{
+		#ifdef DIAG_DEVELOPER
+			EXTrace.Print(EXTrace.AI, this, string.Format("eAI_WeaponSelection cur=%1 dps=%2 cmp=%3 dps=%4", currentWeapon, currentDPS, compareWeapon, compareDPS));
+		#endif
 			return true;
 		}
 
@@ -2628,7 +2637,7 @@ class eAIBase: PlayerBase
 				m_eAI_NoiseTarget = i;
 			}
 
-			if (threat > 0.152)
+			if (threat >= 0.4)
 				eAI_UpdateAcuteDangerTargetCount(target, 1);
 
 		#ifdef DIAG_DEVELOPER
@@ -3689,7 +3698,7 @@ class eAIBase: PlayerBase
 
 	void SetMovementSpeedLimits(int pSpeed, int pSpeedUnderThreat = -1)
 	{
-		SetMovementSpeedLimit(pSpeed);
+		eAI_SetSpeedLimitPreference(pSpeed);
 		if (pSpeedUnderThreat == -1)
 			pSpeedUnderThreat = pSpeed;
 		m_MovementSpeedLimitUnderThreat = eAI_GetMovementSpeed(pSpeedUnderThreat);
@@ -3734,6 +3743,12 @@ class eAIBase: PlayerBase
 
 		if (m_MovementSpeedLimit < speedLimit)
 			SetMovementSpeedLimit(speedLimit);
+	}
+
+	void eAI_SetSpeedLimitPreference(int speedLimit)
+	{
+		SetMovementSpeedLimit(speedLimit);
+		m_eAI_SpeedLimitPreference = m_MovementSpeedLimit;
 	}
 
 	int GetMovementSpeedLimit()
@@ -4896,11 +4911,12 @@ class eAIBase: PlayerBase
 		}
 		else if (IsSwimming())
 		{
-			if (position[1] > m_eAI_SurfaceY)
+			vector neck = GetBonePositionWS(GetBoneIndexByName("neck"));
+			float neckWaterDepth = GetGame().GetWaterDepth(neck);
+			if (neckWaterDepth > -(GetGame().SurfaceGetSeaLevelMax() - GetGame().SurfaceGetSeaLevelMin()))
 			{
 				//! Apply buoyancy
-				vector neck = GetBonePositionWS(GetBoneIndexByName("neck"));
-				position[1] = position[1] + GetGame().GetWaterDepth(neck);
+				position[1] = position[1] + neckWaterDepth;
 				SetPosition(position);
 			}
 		}
@@ -4988,19 +5004,6 @@ class eAIBase: PlayerBase
 		}
 
 		m_eAI_MeleeDidHit = false;
-
-		if (eAI_IsChangingStance())
-		{
-			m_eAI_IsChangingStance = true;
-		}
-		else if (m_eAI_IsChangingStance)
-		{
-			m_eAI_IsChangingStance = false;
-
-			//! HACK: Fix collision box
-			StartCommand_Move();
-			skipScript = true;
-		}
 
 		if (pCurrentCommandID == DayZPlayerConstants.COMMANDID_SCRIPT && m_eAI_Command && !skipScript)
 		{
@@ -7795,6 +7798,7 @@ class eAIBase: PlayerBase
 			return false;
 
 		int time = GetGame().GetTime();
+		int inactiveDuration;  //! ms
 
 		foreach (auto result : results)
 		{
@@ -7820,9 +7824,15 @@ class eAIBase: PlayerBase
 						//! and speed limit is zero or movement speed is zero or velocity is higher than 0.001 m/s, ignore opened door
 						if (hcm.GetBlockedTime() < 3.0 && (CheckFreeSpace(vector.Forward, 0.3, false) || CheckFreeSpace(vector.Aside, 0.5, false) || CheckFreeSpace(-vector.Aside, 0.5, false)) && (m_MovementSpeedLimit == 0 || Math.Floor(hcm.GetCurrentMovementSpeed()) == 0.0 || hcm.GetPositionTime() < 1.5))
 						{
-							if (hcm.IsBlocked())
+							if (hcm.IsBlocked() && hcm.GetBlockedTime() > 0.5)
+							{
 								m_PathFinding.ForceRecalculate(true);
-							continue;
+								continue;
+							}
+							else if (hcm.GetBlockedTime() < 0.5)
+							{
+								continue;
+							}
 						}
 					}
 				}
@@ -7834,9 +7844,12 @@ class eAIBase: PlayerBase
 			}
 			else if (building.IsDoorLocked(doorIndex))
 			{
-				//auto info = building.eAI_GetDoorTargetInformation(doorIndex, result.pos);
-				auto info = building.eAI_GetDoorTargetInformation(doorIndex, building.GetDoorSoundPos(doorIndex));
-				info.AddAI(this);
+				if (building.GetAllowDamage())
+				{
+					//auto info = building.eAI_GetDoorTargetInformation(doorIndex, result.pos);
+					auto info = building.eAI_GetDoorTargetInformation(doorIndex, building.GetDoorSoundPos(doorIndex));
+					info.AddAI(this);
+				}
 
 				continue;
 			}
@@ -7857,9 +7870,23 @@ class eAIBase: PlayerBase
 			//! Decrease chance of AI getting stuck between wall and opened door by temporarily stopping before opening
 			if (!isDoorOpen && !m_eAI_Halt)
 			{
-				m_eAI_Halt = true;
+				eAI_SetHalt(true);
 				GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(eAI_SetHalt, 650, false, false);
 			}
+
+			//! Prevent AI getting pushed by opening/closing door by temporarily disabling collision/gravity (EXPERIMENTAL)
+			/*
+			if (dBodyIsActive(this))
+			{
+				if (m_eAI_Halt)
+					inactiveDuration = 1000;
+				else
+					inactiveDuration = ExpansionMath.PowerConversion(1, 3, m_MovementSpeedLimit, 1000, 200, 2.6);
+
+				dBodyActive(this, ActiveState.INACTIVE);
+				GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(eAI_dBodyActive, inactiveDuration, false, ActiveState.ACTIVE);
+			}
+			*/
 
 			if (isDoorOpen)
 			{
@@ -7869,6 +7896,8 @@ class eAIBase: PlayerBase
 			{
 				building.OpenDoor(doorIndex);
 			}
+
+			GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(m_PathFinding.ForceRecalculate, 34, false, true);
 			
 			ActionInteractBaseCB.Cast(AddCommandModifier_Action(DayZPlayerConstants.CMD_ACTIONMOD_OPENDOORFW,ActionInteractBaseCB));
 
@@ -7882,6 +7911,11 @@ class eAIBase: PlayerBase
 	void eAI_SetHalt(bool halt)
 	{
 		m_eAI_Halt = halt;
+	}
+
+	void eAI_dBodyActive(ActiveState activeState)
+	{
+		dBodyActive(this, activeState);
 	}
 
 	void eAI_UpdateVisitedBuildings()

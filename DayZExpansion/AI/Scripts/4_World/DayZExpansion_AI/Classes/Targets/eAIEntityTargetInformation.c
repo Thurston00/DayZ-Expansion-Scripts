@@ -1,6 +1,6 @@
 class eAIEntityTargetInformation: eAITargetInformation
 {
-	private EntityAI m_Target;
+	protected EntityAI m_Target;
 	private string m_TargetDebugName;
 
 	void eAIEntityTargetInformation(EntityAI target)

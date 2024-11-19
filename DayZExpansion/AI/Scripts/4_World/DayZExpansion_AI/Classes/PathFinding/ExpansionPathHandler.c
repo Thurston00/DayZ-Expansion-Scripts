@@ -930,7 +930,7 @@ class ExpansionPathHandler
 					if (!m_Next0.Parent)
 					{
 						m_IsJumpClimb = true;
-						m_DoClimbTestEx = true;
+						//m_DoClimbTestEx = true;
 					}
 
 					m_SuppressRecalculate = true;
@@ -943,7 +943,7 @@ class ExpansionPathHandler
 			if (!m_Next0.Parent)
 			{
 				m_IsJumpClimb = true;
-				m_DoClimbTestEx = true;
+				//m_DoClimbTestEx = true;
 			}
 		}
 

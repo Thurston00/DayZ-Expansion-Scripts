@@ -451,6 +451,8 @@ class eAIGroup
 
 		#ifdef DIAG_DEVELOPER
 			destinationName = destination.classname;
+			if (destination.name)
+				destinationName += " (" + destination.name + ")";
 		#endif
 		}
 
@@ -1135,7 +1137,7 @@ class eAIGroup
 		{
 			serializer.Write(VERSION);
 
-			DayZPlayerImplement leader = GetLeader();
+			DayZPlayerImplement leader = GetFormationLeader();
 			if (leader)
 				serializer.Write(leader.GetPosition());
 			else

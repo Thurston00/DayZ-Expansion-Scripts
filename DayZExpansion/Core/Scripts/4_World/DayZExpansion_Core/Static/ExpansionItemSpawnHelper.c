@@ -285,7 +285,7 @@ class ExpansionItemSpawnHelper
 		//! First, we try to spawn item in parent inventory directly.
 		//! This can fail if parent is player even if player has clothing that still has enough space, so, ...
 		if (forceCheckCanReceiveItem)
-			newEntity = CreateAndMoveToInventory(parent, type, true);
+			newEntity = CreateAndMoveToInventory(parent, type);
 		else
 			newEntity = parent.GetInventory().CreateInInventory(type);
 
@@ -322,7 +322,7 @@ class ExpansionItemSpawnHelper
 					//! We don't even attempt to create the item if it wouldn't fit anyway due to size
 					if (cargoMax >= itemMax && cargoMin >= itemMin)
 					{
-						newEntity = CreateAndMoveToInventory(parent, type, forceCheckCanReceiveItem);
+						newEntity = CreateAndMoveToInventory(parent, type);
 						if (newEntity)
 							return newEntity;
 					}
@@ -351,74 +351,51 @@ class ExpansionItemSpawnHelper
 
 	//! Unlike GameInventory::CreateInInventory, this deals with rotating the item if it doesn't fit otherwise
 	//! and checks if parent can actually receive the created item
-	static EntityAI CreateAndMoveToInventory(EntityAI parent, string type, bool forceCheckCanReceiveItem = true)
+	//! @note Implementation notes:
+	//! Moving the created temporary entity to the found inventory location (using TakeToDst) WILL NOT WORK because it's buggy as hell when 
+	//! called several times in the same server tick with different entities, because FindFreeLocationFor will find the same location and the 
+	//! entities created after the 1st one will just fail to be moved silently (TakeToDst will still return true).
+	//! Instead, we just discard the temporary entity, and create a fresh one directly at the found location. This works even if called
+	//! multiple times in the same server tick (e.g. in market).
+	static EntityAI CreateAndMoveToInventory(EntityAI parent, string type)
 	{
+		EntityAI tmpEntity;
 		EntityAI newEntity;
 
 		Object obj = GetGame().CreateObjectEx(type, "0 0 0", ECE_LOCAL);
-		if (Class.CastTo(newEntity, obj))
+		if (Class.CastTo(tmpEntity, obj))
 		{
 			auto src = new InventoryLocation();
 			auto dst = new InventoryLocation();
 
-			if (newEntity.GetInventory().GetCurrentInventoryLocation(src) && parent.GetInventory().FindFreeLocationFor(newEntity, FindInventoryLocationType.ATTACHMENT | FindInventoryLocationType.CARGO | FindInventoryLocationType.HANDS, dst))
+			if (tmpEntity.GetInventory().GetCurrentInventoryLocation(src) && parent.GetInventory().FindFreeLocationFor(tmpEntity, FindInventoryLocationType.ATTACHMENT | FindInventoryLocationType.CARGO | FindInventoryLocationType.HANDS, dst))
 			{
-				//! @note GameInventory::TakeToDst performs the below checks for atts/cargo but we need to deal with hands
-				bool canTakeToDst = !forceCheckCanReceiveItem;
-
-				if (forceCheckCanReceiveItem)
+				//! @note for ATTACHMENT and CARGO, dst.GetParent() will be whatever item on parent (or parent itself) can receive the tmp entity
+				//! Only for HANDS will parent and dst.GetParent() always be the same (i.e. the player)
+				switch (dst.GetType())
 				{
-					switch (dst.GetType())
-					{
-						case InventoryLocationType.ATTACHMENT:
-							//! TakeToDst already deals with this, but for good measure
-							canTakeToDst = parent.CanReceiveAttachment(newEntity, dst.GetSlot());
-							break;
+					case InventoryLocationType.ATTACHMENT:
+						newEntity = GameInventory.LocationCreateEntity(dst, type, ECE_IN_INVENTORY, RF_DEFAULT);
+						break;
 
-						case InventoryLocationType.CARGO:
-							//! TakeToDst already deals with this, but for good measure
-							canTakeToDst = parent.CanReceiveItemIntoCargo(newEntity);
-							break;
+					case InventoryLocationType.CARGO:
+						newEntity = dst.GetParent().GetInventory().CreateEntityInCargoEx(type, dst.GetIdx(), dst.GetRow(), dst.GetCol(), dst.GetFlip());  //! Only way to get flip correct
+						break;
 
-						case InventoryLocationType.HANDS:
-							//! Special snowflake: Hands, since it redirects to hand event (async!)
-							//! TakeToDst can NOT check this when creating several items in the same server tick!
-							PlayerBase player;
-							if (Class.CastTo(player, parent) && player.Expansion_PrepareTakeEntityToHands(newEntity))
-								canTakeToDst = true;
-							break;
-					}
-				}
-
-				//! Special snowflake: Hands. Has to use ServerTakeToDst, not LocalTakeDst, else desync. WHY game, WHY.
-				//! Just use ServerTakeToDst always.
-				if (canTakeToDst)
-				{
-				#ifdef SERVER
-					//! This has to be called before ServerTakeToDst else weird things can happen with lifetime
-					GetGame().RemoteObjectTreeCreate(newEntity);
-				#endif
-
-					if (parent.ServerTakeToDst(src, dst))
-					{
-					#ifdef DIAG_DEVELOPER
-						EXTrace.Print(EXTrace.GENERAL_ITEMS, ExpansionItemSpawnHelper, "::CreateAndMoveToInventory - created & moved " + newEntity + " to " + parent);
-					#endif
-
-						return newEntity;
-					}
+					case InventoryLocationType.HANDS:
+						newEntity = GameInventory.LocationCreateEntity(dst, type, ECE_IN_INVENTORY, RF_DEFAULT);
+						break;
 				}
 			}
-
-			GetGame().ObjectDelete(obj);
 		}
 		else if (obj)
 		{
 			Error(obj.ToString() + " is not EntityAI");
-			GetGame().ObjectDelete(obj);
 		}
 
-		return null;
+		GetGame().ObjectDelete(obj);
+
+		return newEntity;
 	}
 
 	static EntityAI SpawnAttachment(string name, EntityAI parent, int skinIndex = -1)

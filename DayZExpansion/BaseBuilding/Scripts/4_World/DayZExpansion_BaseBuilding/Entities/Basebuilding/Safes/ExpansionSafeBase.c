@@ -215,6 +215,8 @@ class ExpansionSafeBase: Container_Base
 		{
 			SetAnimationPhase( "safe_door", 0 );
 		}
+
+		SetSynchDirty();
 	}
 
 	// ------------------------------------------------------------

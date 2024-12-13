@@ -114,9 +114,9 @@ class CfgVehicles
 		};
 		hiddenSelectionsTextures[]=
 		{
-			"\dz\characters\backpacks\data\drybag_co.paa",
-			"\dz\characters\backpacks\data\drybag_co.paa",
-			"\dz\characters\backpacks\data\drybag_co.paa"
+			"",
+			"",
+			""
 		};
 		class ClothingTypes
 		{

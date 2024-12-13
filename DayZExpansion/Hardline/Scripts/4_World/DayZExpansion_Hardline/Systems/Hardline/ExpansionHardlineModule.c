@@ -287,7 +287,11 @@ class ExpansionHardlineModule: CF_ModuleWorld
 			reputation = -reputation;
 
 		killer.Expansion_AddReputation(reputation);
-		MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_OnPlayerKilledEntity(killer, victim, reputation);
+		MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+		if (missionWorld)
+		{
+			missionWorld.Expansion_OnPlayerKilledEntity(killer, victim, reputation);
+		}
 	}
 	
 	protected void HandlePlayerKilledPlayer(PlayerBase killer, PlayerBase victim, int reputation, bool victimIsAI = false)
@@ -332,7 +336,11 @@ class ExpansionHardlineModule: CF_ModuleWorld
 			reputation = -reputation;
 		
 		killer.Expansion_AddReputation(reputation);
-		MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_OnPlayerKilledPlayer(killer, victim, reputation, victimIsAI);
+		MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+		if (missionWorld)
+		{
+			missionWorld.Expansion_OnPlayerKilledPlayer(killer, victim, reputation, victimIsAI);
+		}
 	}
 		
 	protected void HandlePlayerDeath(PlayerBase victim)
@@ -347,7 +355,11 @@ class ExpansionHardlineModule: CF_ModuleWorld
 			return;
 		
 		victim.Expansion_DecreaseReputation(repToRemove);
-		MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_OnPlayerDeath(victim, repToRemove);
+		MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+		if (missionWorld)
+		{
+			missionWorld.Expansion_OnPlayerDeath(victim, repToRemove);
+		}
 	}
 	
 #ifdef EXPANSIONMODAI
@@ -358,7 +370,11 @@ class ExpansionHardlineModule: CF_ModuleWorld
 #endif 
 		
 		HandlePlayerDeath(victim);
-		MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_OnPlayerKilledAI(killer, victim, reputation);
+		MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+		if (missionWorld)
+		{
+			missionWorld.Expansion_OnPlayerKilledAI(killer, victim, reputation);
+		}
 	}
 #endif
 

@@ -28,7 +28,7 @@ class CfgVehicles
 	{
 		scope=1;
 		displayName="Circuit Board - Color Base";
-		model="DayZExpansion\Objects\Misc\CircuitBoard.p3d";
+		model="DayZExpansion\Core\Objects\CircuitBoard\CircuitBoard.p3d";
 		hiddenSelections[]=
 		{
 			"camo"

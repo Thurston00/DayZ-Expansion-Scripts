@@ -1294,8 +1294,16 @@ class ExpansionMarketModule: CF_ModuleWorld
 				break;
 			}
 		}		
+
+		string objsInfo;
+		foreach (int i, Object obj: objs)
+		{
+			if (i)
+				objsInfo += ", ";
+			objsInfo += obj.ToString();
+		}	
 		
-		MarketModulePrint("Spawn - End and return objects: " + objs.ToString());
+		MarketModulePrint("Spawn - End and return objects: " + objsInfo);
 		
 		return objs;
 	}
@@ -2667,7 +2675,6 @@ class ExpansionMarketModule: CF_ModuleWorld
 		TStringIntMap spawnedAmounts = new TStringIntMap;
 		objs = Spawn(reserve, player, parent, includeAttachments, skinIndex, attachmentNotAttached, spawnedAmounts);
 		
-		MarketModulePrint("objs : " + objs);
 		MarketModulePrint("Exec_ConfirmPurchase " + reserve.RootItem.ClassName + " " + reserve.TotalAmount + " " + reserve.Reserved.Count());
 		
 		if (objs.Count())

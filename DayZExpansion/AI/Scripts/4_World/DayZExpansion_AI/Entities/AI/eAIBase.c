@@ -92,10 +92,10 @@ class eAIBase: PlayerBase
 	private ref eAIActionManager m_eActionManager;
 	private ref eAIMeleeCombat m_eMeleeCombat;
 
-	private vector m_eAI_LastMovementCheckTargetPosition;
-	private vector m_eAI_LastMovementCheckUnitPosition;
-	private float m_eAI_MovementCheckTimeout;
+	bool m_eAI_FallHasLanded;
+	float m_eAI_FallYVelZeroTime;
 
+	private bool m_eAI_IsChangingStance;
 	private bool m_eAI_ShouldGetUp = true;
 	int m_eAI_StancePreference = -1;
 
@@ -128,6 +128,9 @@ class eAIBase: PlayerBase
 	private bool m_eAI_TurnTargetActive;
 	private float m_eAI_TurnTarget;
 	bool m_eAI_Halt;
+	float m_eAI_PositionTime;
+	float m_eAI_BlockedTime;
+	float m_eAI_LastDoorInteractionTime;
 
 	float m_eAI_FormationPositionUpdateTime;
 	vector m_eAI_FormationPosition;
@@ -170,12 +173,16 @@ class eAIBase: PlayerBase
 #else
 	/*private*/ ref eAIPathFinding m_PathFinding;
 #endif
+	vector m_eAI_TargetPosition;
 	bool m_eAI_TargetPositionIsFinal = true;
 	bool m_eAI_PositionIsFinal = true;
 	int m_eAI_PrevHCCState;
 	float m_eAI_SurfaceY;
-	ref array<EffectArea> m_eAI_ContaminatedAreas;
-	float m_eAI_ContaminatedAreaAvoidanceDirection;
+	//! @note we track the last entered area and NOT the cluster directly because it is a mutable property of the area
+	//! and WILL be recreated whenever dynamic areas get spawned/despawned by CE!
+	EffectArea m_eAI_EffectArea;
+	int m_eAI_DangerousAreaCount;
+	vector m_eAI_DangerousAreaAvoidancePosition;
 	ref map<int, float> m_eAI_ProtectionLevels;
 
 	private Apple m_DebugTargetApple;
@@ -254,7 +261,6 @@ class eAIBase: PlayerBase
 			ExpansionAISettings settings = GetExpansionSettings().GetAI();
 			AI_HANDLEVAULTING = settings.Vaulting;
 			m_eAI_MemeLevel = settings.MemeLevel;
-			eAI_RandomizeContaminatedAreaAvoidanceDirection();
 		}
 
 		SetEventMask(EntityEvent.INIT);
@@ -297,7 +303,6 @@ class eAIBase: PlayerBase
 		m_eAI_Targets = {};
 		m_eAI_TargetInformationStates = new map<eAITargetInformation, ref eAITargetInformationState>();
 
-		m_eAI_ContaminatedAreas = {};
 		m_eAI_ProtectionLevels = new map<int, float>;
 
 		m_AimingProfile = new eAIAimingProfile(this);
@@ -793,7 +798,7 @@ class eAIBase: PlayerBase
 
 	bool eAI_ShouldBandage()
 	{
-		if (IsBleeding() && GetGame().GetTickTime() - m_eAI_LastHitTime > 10 && (m_ContaminatedAreaCount == 0 || m_eAI_ProtectionLevels[DEF_CHEMICAL] >= 5.0) && (m_eAI_CurrentThreatToSelfActive < 0.4 || GetHealth01("", "Blood") < 0.7 || !m_eAI_Targets.Count() || GetTarget().info.IsInherited(eAIItemTargetInformation) || GetTarget().info.IsInherited(eAINoiseTargetInformation)))
+		if (IsBleeding() && GetGame().GetTickTime() - m_eAI_LastHitTime > 10 && (m_eAI_DangerousAreaCount == 0 || m_eAI_ProtectionLevels[DEF_CHEMICAL] >= 6.0) && (m_eAI_CurrentThreatToSelfActive < 0.4 || GetHealth01("", "Blood") < 0.7 || !m_eAI_Targets.Count() || GetTarget().info.IsInherited(eAIItemTargetInformation) || GetTarget().info.IsInherited(eAINoiseTargetInformation)))
 			return true;
 
 		return false;
@@ -1211,6 +1216,14 @@ class eAIBase: PlayerBase
 	void eAI_SetLootingBehavior(int bitmask)
 	{
 		m_eAI_LootingBehavior = bitmask;
+	}
+	
+	override void SetFallYDiff(float value)
+	{
+		super.SetFallYDiff(value);
+
+		m_eAI_FallHasLanded = false;
+		m_eAI_FallYVelZeroTime = 0;
 	}
 
 	override bool IsSwimming()
@@ -2145,6 +2158,12 @@ class eAIBase: PlayerBase
 								continue;
 							}
 
+							//! Flaregun is simply too low damage to be of any use, we're better off even with melee.
+							//! Also, it causes NULL ptrs if fired on server side.
+							//! TODO: Maybe have a list of excludes?
+							if (targetItem.IsInherited(Flaregun))
+								continue;
+
 							if (eAI_WasItemRecentlyDropped(targetItem))
 							{
 								EXPrint(this, "Ignoring weapon because it was recently dropped: " + targetItem + " (type=" + targetItem.GetType() + " health=" + targetItem.GetHealth() + ")");
@@ -2152,7 +2171,7 @@ class eAIBase: PlayerBase
 								continue;
 							}
 
-							if (!hasFirearmWithAmmo || (itemInHands && itemInHands.IsWeapon() && (m_eAI_LootingBehavior & eAILootingBehavior.UPGRADE) && eAI_WeaponSelection(itemInHands, targetItem)))
+							if ((!hasFirearmWithAmmo && targetItem.Expansion_GetDPS() > 0) || (itemInHands && itemInHands.IsWeapon() && (m_eAI_LootingBehavior & eAILootingBehavior.UPGRADE) && eAI_WeaponSelection(itemInHands, targetItem)))
 								isWeaponOrNonEmptyMag = true;
 						}
 					}
@@ -2351,6 +2370,10 @@ class eAIBase: PlayerBase
 		if (!Class.CastTo(compareWeapon, compareItem))
 			return false;  //! If compared item is not weapon, prefer current item (even if null)
 
+		//! If compared weapon DPS is equal or below 10 and doesn't shoot explosive ammo, we're better off with melee even
+		if (compareWeapon.Expansion_GetDPS() <= 10.0 && !compareWeapon.ShootsExplosiveAmmo())
+			return false;
+
 		if (!Class.CastTo(currentWeapon, currentItem))
 			return true;  //! If current item is not weapon, prefer compared item (weapon, not null)
 
@@ -2380,18 +2403,35 @@ class eAIBase: PlayerBase
 		float currentDPS = currentWeapon.Expansion_GetDPS();
 		float compareDPS = compareWeapon.Expansion_GetDPS();
 
-		if (currentDPS > 0.0 && compareDPS > 0.0 && currentWeapon.GetInventory().AttachmentCount() < compareWeapon.GetInventory().AttachmentCount())
+	#ifdef DIAG_DEVELOPER
+		string curWpnInfo;
+		string cmpWpnInfo;
+	#endif
+
+		if (compareDPS == currentDPS)
 		{
-		#ifdef DIAG_DEVELOPER
-			EXTrace.Print(EXTrace.AI, this, string.Format("eAI_WeaponSelection cur=%1 dps=%2 attCount=%3 cmp=%4 dps=%5 attCount=%6 curdps/cmpdps=%7", currentWeapon, currentDPS, currentWeapon.GetInventory().AttachmentCount(), compareWeapon, compareDPS, compareWeapon.GetInventory().AttachmentCount(),compareDPS / currentDPS));
-		#endif
-			if (compareDPS / currentDPS > 0.75)
+			//! If DPS is equal, only select weapon if it has more health or more atts
+
+			if (currentWeapon.GetHealth() < compareWeapon.GetHealth() || currentWeapon.GetInventory().AttachmentCount() < compareWeapon.GetInventory().AttachmentCount())
+			{
+			#ifdef DIAG_DEVELOPER
+				curWpnInfo = string.Format("%1 type=%2 dmg=%3 dps=%4 health=%5 attCount=%6", ExpansionStatic.GetHierarchyInfo(currentWeapon), typename.EnumToString(ExpansionWeaponType, currentWeaponType), currentWeapon.m_Expansion_WeaponInfo.m_AvgDmg, currentWeapon.Expansion_GetDPS(), currentWeapon.GetHealth(), currentWeapon.GetInventory().AttachmentCount());
+
+				cmpWpnInfo = string.Format("%1 type=%2 dmg=%3 dps=%4 health=%5 attCount=%6", ExpansionStatic.GetHierarchyInfo(compareWeapon), typename.EnumToString(ExpansionWeaponType, compareWeaponType), compareWeapon.m_Expansion_WeaponInfo.m_AvgDmg, compareWeapon.Expansion_GetDPS(), compareWeapon.GetHealth(), compareWeapon.GetInventory().AttachmentCount());
+
+				EXTrace.Print(EXTrace.AI, this, string.Format("eAI_WeaponSelection cur=%1 cmp=%2 curDmg == cmpDmg", curWpnInfo, cmpWpnInfo));
+			#endif
 				return true;
+			}
 		}
 		else if (compareDPS > currentDPS)
 		{
 		#ifdef DIAG_DEVELOPER
-			EXTrace.Print(EXTrace.AI, this, string.Format("eAI_WeaponSelection cur=%1 dps=%2 cmp=%3 dps=%4", currentWeapon, currentDPS, compareWeapon, compareDPS));
+			curWpnInfo = string.Format("%1 type=%2 dmg=%3 dps=%4 health=%5 attCount=%6", ExpansionStatic.GetHierarchyInfo(currentWeapon), typename.EnumToString(ExpansionWeaponType, currentWeaponType), currentWeapon.m_Expansion_WeaponInfo.m_AvgDmg, currentWeapon.Expansion_GetDPS(), currentWeapon.GetHealth(), currentWeapon.GetInventory().AttachmentCount());
+
+			cmpWpnInfo = string.Format("%1 type=%2 dmg=%3 dps=%4 health=%5 attCount=%6", ExpansionStatic.GetHierarchyInfo(compareWeapon), typename.EnumToString(ExpansionWeaponType, compareWeaponType), compareWeapon.m_Expansion_WeaponInfo.m_AvgDmg, compareWeapon.Expansion_GetDPS(), compareWeapon.GetHealth(), compareWeapon.GetInventory().AttachmentCount());
+
+			EXTrace.Print(EXTrace.AI, this, string.Format("eAI_WeaponSelection cur=%1 cmp=%2 curDPS > cmpDPS", curWpnInfo, cmpWpnInfo));
 		#endif
 			return true;
 		}
@@ -2883,7 +2923,11 @@ class eAIBase: PlayerBase
 	eAICommandMove StartCommand_MoveAI()
 	{
 		int stance;
-		if (GetCommand_Move() || GetCommand_Action() || GetCommand_Damage())
+		if (GetCommand_Unconscious() && !m_eAI_IsSwimming && m_LastCommandBeforeUnconscious != DayZPlayerConstants.COMMANDID_VEHICLE)
+		{
+			stance = DayZPlayerConstants.STANCEIDX_PRONE;
+		}
+		else if (GetCommand_Move() || GetCommand_Action() || GetCommand_Damage())
 		{
 			stance = m_MovementState.m_iStanceIdx;
 			if (m_MovementState.IsRaised())
@@ -2966,6 +3010,14 @@ class eAIBase: PlayerBase
 		EXTrace.Print(EXTrace.AI, this, "EndFighting - melee time " + (GetGame().GetTime() - m_eAI_MeleeTime) + " ms");
 	}
 
+	bool eAI_CanEnableSwimming()
+	{
+		if ((((GetCurrentWaterLevel() >= -0.5 || m_eAI_SurfaceY < g_Game.SurfaceGetSeaLevelMin()) && GetThreatToSelf() < 0.2) || m_eAI_EffectArea) && !IsSwimming() && !m_PathFinding.m_IsSwimmingEnabled && (!IsBleeding() || m_eAI_DangerousAreaCount > 0))
+			return true;
+
+		return false;
+	}
+
 	override void OnCommandSwimStart()
 	{
 #ifdef EXTRACE
@@ -3022,78 +3074,119 @@ class eAIBase: PlayerBase
 	{
 		super.EEItemAttached(item, slot_name);
 
-		eAI_UpdateProtectionLevel(DEF_BIOLOGICAL, item, 1);
-		eAI_UpdateProtectionLevel(DEF_CHEMICAL, item, 1);
+		if (GetGame().IsServer())
+			eAI_UpdateProtectionLevels(item, 1, slot_name);
 	}
 
 	override void EEItemDetached(EntityAI item, string slot_name)
 	{
 		super.EEItemDetached(item, slot_name);
 
-		eAI_UpdateProtectionLevel(DEF_BIOLOGICAL, item, -1);
-		eAI_UpdateProtectionLevel(DEF_CHEMICAL, item, -1);
+		if (GetGame().IsServer())
+			eAI_UpdateProtectionLevels(item, -1, slot_name);
 	}
 
-	void eAI_UpdateProtectionLevel(int type, EntityAI entity, int value)
+	void eAI_UpdateProtectionLevels(EntityAI entity, int value, string slotName = string.Empty)
 	{
+		if (slotName)
+		{
+			if (!GetBleedingManagerServer())  //! Vanilla deletes BleedingManagerServer in EEKilled
+				return;
+
+			set<int> slotIDs = GetBleedingManagerServer().GetBleedingSourcesLocations();
+			int slotID = InventorySlots.GetSlotIdFromString(slotName);
+			if (slotIDs.Find(slotID) == -1)
+				return;
+		}
+
 		ItemBase item;
 		if (Class.CastTo(item, entity))
 		{
-			int level = m_eAI_ProtectionLevels[type] + item.GetProtectionLevel(type, true) * value;
-			m_eAI_ProtectionLevels[type] = level;
-		#ifdef DIAG_DEVELOPER
+			eAI_UpdateProtectionLevel(DEF_BIOLOGICAL, item, value);
+			eAI_UpdateProtectionLevel(DEF_CHEMICAL, item, value);
+		}
+	}
+
+	void eAI_UpdateProtectionLevel(int type, ItemBase item, int value)
+	{
+		float level = item.GetProtectionLevel(type, true) * value;
+
+		m_eAI_ProtectionLevels[type] = m_eAI_ProtectionLevels[type] + level;
+
+	#ifdef DIAG_DEVELOPER
+		if (level != 0)
+		{
 			if (type == DEF_CHEMICAL)
-				EXTrace.Print(EXTrace.AI, this, "Chemical protection level: " + level);
+				EXTrace.Print(EXTrace.AI, this, "Chemical protection level: " + m_eAI_ProtectionLevels[type]);
 			else
-				EXTrace.Print(EXTrace.AI, this, "Biological protection level: " + level);
+				EXTrace.Print(EXTrace.AI, this, "Biological protection level: " + m_eAI_ProtectionLevels[type]);
+		}
+	#endif
+	}
+
+	void eAI_UpdateProtectionLevels()
+	{
+		if (!GetBleedingManagerServer())  //! Vanilla deletes BleedingManagerServer in EEKilled
+			return;
+
+		set<int> slotIDs = GetBleedingManagerServer().GetBleedingSourcesLocations();
+
+		m_eAI_ProtectionLevels[DEF_BIOLOGICAL] = 0;
+		m_eAI_ProtectionLevels[DEF_CHEMICAL] = 0;
+
+		foreach (int slotID: slotIDs)
+		{
+			EntityAI attachment = GetInventory().FindAttachment(slotID);
+
+			eAI_UpdateProtectionLevels(attachment, 1);
+		}
+	}
+
+	override void Expansion_OnDangerousAreaEnterServer(EffectArea area, EffectTrigger trigger)
+	{
+	#ifdef DIAG_DEVELOPER
+		ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " Expansion_OnDangerousAreaEnterServer " + area + " " + area.m_Position + " " + area.m_Radius);
+	#endif
+
+		m_eAI_DangerousAreaCount++;
+
+		if (!m_eAI_EffectArea || area.m_Expansion_MergedCluster != m_eAI_EffectArea.m_Expansion_MergedCluster)
+		{
+		#ifdef DIAG_DEVELOPER
+			ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " Expansion_OnDangerousAreaEnterServer " + area.m_Expansion_MergedCluster + " " + area.m_Expansion_MergedCluster.m_Position + " " + area.m_Expansion_MergedCluster.m_Radius);
 		#endif
+
+			GetGroup().RandomizeDangerousAreaAvoidanceDirection();
 		}
+
+		m_eAI_EffectArea = area;
 	}
 
-	override void Expansion_OnContaminatedAreaEnterServer(EffectArea area, EffectTrigger trigger)
+	override void Expansion_OnDangerousAreaExitServer(EffectArea area, EffectTrigger trigger)
 	{
-		EXTrace.Print(EXTrace.AI, this, "Expansion_OnContaminatedAreaEnterServer " + area + " " + area.m_Position + " " + area.m_Radius);
+	#ifdef DIAG_DEVELOPER
+		ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " Expansion_OnDangerousAreaExitServer " + area + " " + area.m_Position + " " + area.m_Radius);
+	#endif
 
-		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Remove(eAI_ForgetContaminatedArea);
-
-		if (m_eAI_ContaminatedAreas.Find(area) == -1)
-			m_eAI_ContaminatedAreas.Insert(area);
+		m_eAI_DangerousAreaCount--;
+		if (m_eAI_DangerousAreaCount < 0)
+			m_eAI_DangerousAreaCount = 0;
 	}
 
-	override void Expansion_OnContaminatedAreaExitServer(EffectArea area, EffectTrigger trigger)
+	void eAI_ForgetDangerousAreaCluster()
 	{
-		EXTrace.Print(EXTrace.AI, this, "Expansion_OnContaminatedAreaExitServer " + area + " " + area.m_Position + " " + area.m_Radius);
-
-		GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(eAI_ForgetContaminatedArea, 5 * 60 * 1000, false, area);
-	}
-
-	void eAI_ForgetContaminatedArea(EffectArea area)
-	{
-		if (area)
+		if (m_eAI_DangerousAreaCount == 0)
 		{
-			EXTrace.Print(EXTrace.AI, this, "eAI_ForgetContaminatedArea " + area + " " + area.m_Position + " " + area.m_Radius);
+		#ifdef DIAG_DEVELOPER
+			auto cluster = m_eAI_EffectArea.m_Expansion_MergedCluster;
+			if (cluster)
+				ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " eAI_ForgetDangerousAreaCluster " + cluster + " " + cluster.m_Position + " " + cluster.m_Radius);
+			else
+				ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " eAI_ForgetDangerousAreaCluster");
+		#endif
 
-			m_eAI_ContaminatedAreas.RemoveItem(area);
+			m_eAI_EffectArea = null;
 		}
-		else
-		{
-			for (int i = m_eAI_ContaminatedAreas.Count() - 1; i >= 0; i--)
-			{
-				if (!m_eAI_ContaminatedAreas[i])
-					m_eAI_ContaminatedAreas.Remove(i);
-			}
-		}
-
-		if (m_eAI_ContaminatedAreas.Count() == 0)
-			eAI_RandomizeContaminatedAreaAvoidanceDirection();
-	}
-
-	void eAI_RandomizeContaminatedAreaAvoidanceDirection()
-	{
-		if (Math.RandomInt(0, 2))
-			m_eAI_ContaminatedAreaAvoidanceDirection = 15.0;
-		else
-			m_eAI_ContaminatedAreaAvoidanceDirection = -15.0;
 	}
 
 	/**
@@ -3107,22 +3200,59 @@ class eAIBase: PlayerBase
 		auto trace = CF_Trace_1(this, "OverrideTargetPosition").Add(pPosition);
 #endif
 
-		if (m_eAI_ContaminatedAreas.Count() && Expansion_CanBeDamaged() && m_eAI_ProtectionLevels[DEF_CHEMICAL] < 5.0)
+		vector oPos = pPosition;
+
+		//! Try and go around any contaminated area if not fuly protected by following the outer edge
+		if (m_eAI_EffectArea && Expansion_CanBeDamaged() && m_eAI_ProtectionLevels[DEF_CHEMICAL] < 6.0)
 		{
+			ExpansionEffectAreaMergedCluster cluster = m_eAI_EffectArea.m_Expansion_MergedCluster;
 			EffectArea closestArea;
 			vector position = GetPosition();
-			vector oPos = pPosition;
+			float tolerance = Math.Max(Math.Min(m_eAI_EffectArea.m_Radius * 0.1, 15.0), 3.0);
 
-			if (ContaminatedArea_Base.s_Expansion_MergedClusters.FindClosestPointOutsideAnyCluster(position, pPosition, m_eAI_ContaminatedAreaAvoidanceDirection, closestArea, this))
+			if (m_eAI_DangerousAreaAvoidancePosition != vector.Zero && !Math.IsPointInCircle(m_eAI_DangerousAreaAvoidancePosition, 2.0, position) && !m_PathFinding.m_IsTargetUnreachable && Math.IsPointInCircle(m_eAI_TargetPosition, tolerance, pPosition))
+			{
+				pPosition = m_eAI_DangerousAreaAvoidancePosition;
+			}
+			else if (cluster.FindClosestPointOutsideCluster(position, pPosition, GetGroup().m_DangerousAreaAvoidanceDirection, true, closestArea, this))
 			{
 				pPosition = ExpansionStatic.GetSurfaceRoadPosition(pPosition, RoadSurfaceDetection.CLOSEST);
-				isFinal = true;
-				Expansion_DebugObject(3142, pPosition, "ExpansionDebugNoticeMe_Cyan");
-				if (closestArea.Expansion_IsPointInside(oPos) && !closestArea.Expansion_IsPointInside(position))
+
+				float waterDepth = GetGame().GetWaterDepth(pPosition);
+				if (waterDepth > 0)
+					pPosition[1] = pPosition[1] + waterDepth;
+
+			#ifdef DIAG_DEVELOPER
+				vector dir = pPosition - position;
+				dir[1] = 0;
+				Expansion_DebugObject(3142, pPosition, "ExpansionDebugNoticeMe_Cyan", dir);
+			#endif
+
+				//! If the original target position is inside the closest area, stop.
+				if (m_eAI_DangerousAreaCount == 0 && Math.IsPointInCircle(closestArea.m_Position, closestArea.m_Radius + 3.0, oPos))
 				{
+					isFinal = true;
 					m_PathFinding.m_IsTargetUnreachable = true;
 					m_PathFinding.m_IsUnreachable = true;
+					pPosition = oPos;
 				}
+				else
+				{
+					m_eAI_DangerousAreaAvoidancePosition = pPosition;
+
+					m_PathFinding.ForceRecalculate(true);
+				}
+			}
+			else
+			{
+				m_eAI_DangerousAreaAvoidancePosition = vector.Zero;
+
+			#ifdef DIAG_DEVELOPER
+				Expansion_DebugObject(3142, vector.Zero, "ExpansionDebugNoticeMe_Cyan");
+			#endif
+
+				if (!Math.IsPointInCircle(cluster.m_Position, cluster.m_Radius + 100.0, position))
+					eAI_ForgetDangerousAreaCluster();
 			}
 		}
 
@@ -3132,6 +3262,7 @@ class eAIBase: PlayerBase
 		m_PathFinding.OverridePosition(pPosition);
 #endif
 
+		m_eAI_TargetPosition = oPos;
 		m_eAI_TargetPositionIsFinal = isFinal;
 	}
 
@@ -4526,14 +4657,15 @@ class eAIBase: PlayerBase
 
 		GetTransform(m_ExTransformPlayer);
 
-		vector position = m_ExTransformPlayer[3];
-		m_eAI_SurfaceY = GetGame().SurfaceY(position[0], position[2]);
+		vector playerPosition = m_ExTransformPlayer[3];
+		m_eAI_SurfaceY = GetGame().SurfaceY(playerPosition[0], playerPosition[2]);
 
-		if (position[1] < m_eAI_SurfaceY - 0.5)
+		if (playerPosition[1] < m_eAI_SurfaceY - 0.5)
 		{
-			position[1] = m_eAI_SurfaceY;
-			EXTrace.Print(EXTrace.AI, this, "below surface - teleporting from " + m_ExTransformPlayer[3] + " to " + position);
-			SetPosition(position);
+			playerPosition[1] = m_eAI_SurfaceY;
+			EXTrace.Print(EXTrace.AI, this, "below surface - teleporting from " + m_ExTransformPlayer[3] + " to " + playerPosition);
+			SetPosition(playerPosition);
+			return;
 		}
 
 		eAI_CheckIsInCover();
@@ -4745,7 +4877,7 @@ class eAIBase: PlayerBase
 						int wakeUpStance = DayZPlayerConstants.STANCEIDX_PRONE;
 
 						//! Don't set the stance if we are swimming or in a vehicle, stance change animation could play
-						if (m_Swimming.m_bWasSwimming || m_LastCommandBeforeUnconscious == DayZPlayerConstants.COMMANDID_VEHICLE)
+						if (m_eAI_IsSwimming || m_LastCommandBeforeUnconscious == DayZPlayerConstants.COMMANDID_VEHICLE)
 							wakeUpStance = -1;
 
 						hcu.WakeUp(wakeUpStance);
@@ -4806,18 +4938,16 @@ class eAIBase: PlayerBase
 				}
 			}
 
-			if (PhysicsIsFalling(true))
+			if (PhysicsIsFalling(true) && !eAI_ShouldStartSwimming() && eAI_ShouldStartFalling())
 			{
 				SetOrientation(GetOrientation());
 				StartCommand_Fall(0);
+				SetFallYDiff(playerPosition[1]);
 
 				return;
 			}
 
-			if (pCurrentCommandID == DayZPlayerConstants.COMMANDID_UNCONSCIOUS)
-				StartCommand_Move();
-			else
-				StartCommand_MoveAI();
+			StartCommand_MoveAI();
 
 			returnEarly = true;
 		}
@@ -4849,13 +4979,6 @@ class eAIBase: PlayerBase
 		{
 			HumanCommandFall fall = GetCommand_Fall();
 
-			vector wl;
-			if (!IsSwimming() && DayZPlayerUtils.CheckWaterLevel(this, wl) == EWaterLevels.LEVEL_SWIM_START)
-			{
-				StartCommand_MoveAI();
-				return;
-			}
-
 			if (fall && fall.PhysicsLanded())
 			{
 				DayZPlayerType type = GetDayZPlayerType();
@@ -4868,7 +4991,7 @@ class eAIBase: PlayerBase
 				if (fallDamageData.m_Height < 0.5)
 				{
 					fallDamageData.m_LandType = HumanCommandFall.LANDTYPE_NONE; 
-					fall.Land(fallDamageData.m_LandType);
+					OnLand(pCurrentCommandID, fallDamageData);
 					npar = type.GetNoiseParamsLandLight();
 					AddNoise(npar);
 				}
@@ -4879,21 +5002,21 @@ class eAIBase: PlayerBase
 					else
 						fallDamageData.m_LandType = HumanCommandFall.LANDTYPE_LIGHT;
 					
-					fall.Land(fallDamageData.m_LandType);
+					OnLand(pCurrentCommandID, fallDamageData);
 					npar = type.GetNoiseParamsLandLight();
 					AddNoise(npar);
 				}
 				else if (fallDamageData.m_Height < 5.0)
 				{
 					fallDamageData.m_LandType = HumanCommandFall.LANDTYPE_MEDIUM;
-					fall.Land(fallDamageData.m_LandType);
+					OnLand(pCurrentCommandID, fallDamageData);
 					npar = type.GetNoiseParamsLandHeavy();
 					AddNoise(npar);
 				}
 				else
 				{
 					fallDamageData.m_LandType = HumanCommandFall.LANDTYPE_HEAVY;
-					fall.Land(fallDamageData.m_LandType);
+					OnLand(pCurrentCommandID, fallDamageData);
 					npar = type.GetNoiseParamsLandHeavy();
 					AddNoise(npar);
 				}
@@ -4905,9 +5028,25 @@ class eAIBase: PlayerBase
 
 				m_FallDamage.HandleFallDamage(fallDamageData);
 				m_JumpClimb.CheckAndFinishJump(fallDamageData.m_LandType);
+
+				m_eAI_FallHasLanded = true;
+			}
+			else if (fall && fall.IsLanding() && m_eAI_FallHasLanded && GetVelocity(this)[1] < 0.1)
+			{
+				m_eAI_FallYVelZeroTime += pDt;
+				if (m_eAI_FallYVelZeroTime > 1.5)
+				{
+					m_eAI_FallYVelZeroTime = 0;
+					//! Break out of stuck falling animation
+					eAI_Unbug("fall");
+				}
+			}
+			else if (eAI_ShouldStartSwimming())
+			{
+				StartCommand_MoveAI();
 			}
 
-			// return;
+			return;
 		}
 		else if (IsSwimming())
 		{
@@ -4916,16 +5055,15 @@ class eAIBase: PlayerBase
 			if (neckWaterDepth > -(GetGame().SurfaceGetSeaLevelMax() - GetGame().SurfaceGetSeaLevelMin()))
 			{
 				//! Apply buoyancy
-				position[1] = position[1] + neckWaterDepth;
-				SetPosition(position);
+				playerPosition[1] = playerPosition[1] + neckWaterDepth;
+				SetPosition(playerPosition);
 			}
 		}
-		else if (PhysicsIsFalling(false))
+		else if (PhysicsIsFalling(false) && !eAI_ShouldStartSwimming() && eAI_ShouldStartFalling())
 		{
 			SetOrientation(GetOrientation());
 			StartCommand_Fall(0);
-
-			m_FallYDiff = GetPosition()[1];
+			SetFallYDiff(playerPosition[1]);
 			// return;
 
 			//! Prevent NULL pointers by skipping COMMANDID_SCRIPT handling
@@ -5005,6 +5143,19 @@ class eAIBase: PlayerBase
 
 		m_eAI_MeleeDidHit = false;
 
+		if (eAI_IsChangingStance())
+		{
+			m_eAI_IsChangingStance = true;
+		}
+		else if (m_eAI_IsChangingStance)
+		{
+			m_eAI_IsChangingStance = false;
+
+			//! HACK: Fix collision box
+			StartCommand_Move();
+			skipScript = true;
+		}
+
 		if (pCurrentCommandID == DayZPlayerConstants.COMMANDID_SCRIPT && m_eAI_Command && !skipScript)
 		{
 			vector lookTargetRelAngles = m_eAI_LookDirectionTarget_ModelSpace.VectorToAngles();
@@ -5054,7 +5205,7 @@ class eAIBase: PlayerBase
 					if (m_PathFinding.m_AllowJumpClimb && !m_PathFinding.m_IsBlockedPhysically)
 						m_PathFinding.SetAllowJumpClimb(false, 15.0);
 				}
-				else if (m_PathFinding.m_IsJumpClimb && m_PathFinding.m_AllowJumpClimb && !m_PathFinding.m_IsBlockedPhysically && hcm.IsBlocked() && hcm.GetBlockedTime() > pDt)
+				else if (m_PathFinding.m_IsJumpClimb && m_PathFinding.m_AllowJumpClimb && !m_PathFinding.m_IsBlockedPhysically && hcm.IsBlocked() && m_eAI_BlockedTime > pDt)
 				{
 					//! If we are still blocked, find way around obstacle
 					//! (need to be blocked for at least one commandhandler tick
@@ -5135,7 +5286,7 @@ class eAIBase: PlayerBase
 				if (m_SprintedTime > 0.5)
 					m_SprintFull = true;
 
-				if (hcm.GetPositionTime() > 3.0 && Expansion_IsAnimationIdle())
+				if (hcm.GetCurrentMovementSpeed() > 0 && m_eAI_PositionTime > 3.0 && Expansion_IsAnimationIdle())
 					eAI_Unbug("move");
 
 				break;
@@ -5147,6 +5298,25 @@ class eAIBase: PlayerBase
 				break;
 			}
 		}
+	}
+
+	bool eAI_ShouldStartFalling()
+	{
+		vector position = m_ExTransformPlayer[3];
+		if (!IsSwimming() && position[1] - GetGame().SurfaceRoadY3D(position[0], position[1], position[2], RoadSurfaceDetection.UNDER) >= 0.5)
+			return true;
+
+		return false;
+	}
+
+	bool eAI_ShouldStartSwimming()
+	{
+		vector wl;
+
+		if (!IsSwimming() && DayZPlayerUtils.CheckWaterLevel(this, wl) == EWaterLevels.LEVEL_SWIM_START)
+			return true;
+
+		return false;
 	}
 
 	bool eAI_UpdateLookDirectionPreference()
@@ -5780,6 +5950,30 @@ class eAIBase: PlayerBase
 	{
 		if (distanceSq > minDistanceSq && Math.IsPointInCircle(position, Math.Sqrt(minDistanceSq), GetPosition()))
 			return true;
+
+		return false;
+	}
+
+	bool eAI_ShouldUseSurfaceUnderWaterForPathFinding()
+	{
+		if (m_eAI_SurfaceY < g_Game.SurfaceGetSeaLevelMin())
+		{
+			if (IsSwimming())
+				return true;
+
+			vector begPos = m_ExTransformPlayer[3];
+			vector endPos = begPos - "0 1 0";
+			vector contactPos;
+			vector contactDir;
+			int contactComponent;
+			set<Object> results = new set<Object>;
+
+			if (DayZPhysics.RaycastRV(begPos, endPos, contactPos, contactDir, contactComponent, results, null, this, false, false, ObjIntersectGeom))
+			{
+				if (results.Count() == 0 || results[0].IsPlainObject() || results[0].IsScenery())
+					return true;
+			}
+		}
 
 		return false;
 	}
@@ -6510,7 +6704,16 @@ class eAIBase: PlayerBase
 
 	bool eAI_HasInteractingPlayers()
 	{
-		return m_eAI_InteractingPlayers.Count() > 0;
+		for (int i = m_eAI_InteractingPlayers.Count() - 1; i >= 0; i--)
+		{
+			Man player = m_eAI_InteractingPlayers[i];
+			if (player && player.IsAlive() && !player.IsUnconscious())
+				return true;
+			else
+				m_eAI_InteractingPlayers.Remove(i);
+		}
+
+		return false;
 	}
 
 	override void SetActions(out TInputActionMap InputActionMap)
@@ -6672,7 +6875,7 @@ class eAIBase: PlayerBase
 	{
 
 #ifdef DIAG_DEVELOPER
-		string msg = "Action timed out for " + Debug.GetDebugName(this) + " while trying to " + what + ", item in hands " + Debug.GetDebugName(GetItemInHands());
+		string msg = "Action timed out for " + Debug.GetDebugName(this) + " while trying to " + what + ", item in hands " + ExpansionStatic.GetDebugInfo(GetItemInHands());
 		EXTrace.Print(true, this, msg);
 		ExpansionNotification("ACTION TIMEOUT", msg).Error();
 #endif
@@ -6902,6 +7105,20 @@ class eAIBase: PlayerBase
 		return false;
 	}
 
+	bool eAI_ShouldTreatItemAsBandage(ItemBase item)
+	{
+		if (item.Expansion_CanBeUsedToBandage())
+		{
+			if ((m_eAI_LootingBehavior & eAILootingBehavior.CLOTHING) == 0)
+				return true;
+
+			if ((m_eAI_LootingBehavior & eAILootingBehavior.BANDAGES) && m_eAI_Bandages.Count() < 3)
+				return true;
+		}
+
+		return false;
+	}
+
 	bool eAI_TakeItemToInventoryImpl(ItemBase item, FindInventoryLocationType flags = 0)
 	{
 #ifdef EXTRACE
@@ -6922,6 +7139,7 @@ class eAIBase: PlayerBase
 		{
 			TStringArray inventorySlots = item.Expansion_GetInventorySlots();
 			bool canWear;
+			bool treatAsBandage = eAI_ShouldTreatItemAsBandage(item);
 
 			foreach (string slot: inventorySlots)
 			{
@@ -6929,7 +7147,7 @@ class eAIBase: PlayerBase
 				{
 					canWear = true;
 
-					if (!Class.CastTo(currentlyWornGear, FindAttachmentBySlotName(slot)))
+					if (treatAsBandage || !Class.CastTo(currentlyWornGear, FindAttachmentBySlotName(slot)))
 					{
 						//! Found empty slot
 						currentlyWornGear = null;  //! null any gear that was found in another slot
@@ -6961,7 +7179,10 @@ class eAIBase: PlayerBase
 			}
 			else if (canWear)
 			{
-				flags = FindInventoryLocationType.ATTACHMENT;
+				if (treatAsBandage)
+					flags = FindInventoryLocationType.CARGO;
+				else
+					flags = FindInventoryLocationType.ATTACHMENT;
 			}
 		}
 
@@ -7361,7 +7582,9 @@ class eAIBase: PlayerBase
 				climbFloatingItem = true;
 		}
 
-		if ((!m_PathFinding.m_IsJumpClimb || isBlockingItem) && !climbFloatingItem)
+		bool underWaterSurfacePathFinding = eAI_ShouldUseSurfaceUnderWaterForPathFinding();
+
+		if (((!m_PathFinding.m_IsJumpClimb && (!underWaterSurfacePathFinding || !hcm.IsBlocked())) || isBlockingItem) && !climbFloatingItem)
 			return false;
 
 		if (m_eAI_PositionIsFinal && Math.Round(Expansion_GetMovementSpeed()) == 0.0)
@@ -7382,7 +7605,7 @@ class eAIBase: PlayerBase
 			//! AI, like players, can just walk over small height differences (avoids awkwardly climbing stairs)
 			//! @note hcls.m_fFwMinHeight cannot be used for this since it is too high (0.7)
 			//! @note this check is only needed for vanilla DoClimbTest, ExpansionClimb::DoClimbTest checks height internally
-			if (m_ExClimbResult.m_fClimbHeight < 0.5)
+			if ((m_ExClimbResult.m_fClimbHeight < 0.5 && !IsSwimming()) || m_ExClimbResult.m_fClimbHeight > hcls.m_fFwMaxHeight)
 				return false;
 
 			return true;
@@ -7391,7 +7614,7 @@ class eAIBase: PlayerBase
 		//! As we are essentially using Zombie pathfinding, we may encounter situations where the path will go through a fence
 		//! that Zs would be able to jump (e.g. wall_indfnc_9.p3d) but player AI would not due to HumanCommandClimb.DoClimbTest not letting us.
 		//! Use ExpansionClimb.DoClimbTest with alwaysAllowClimb = true instead.
-		if (m_PathFinding.m_DoClimbTestEx)
+		if (m_PathFinding.m_DoClimbTestEx || IsSwimming())
 		{
 			ExpansionClimb.DoClimbTest(this, m_ExClimbResult, true);
 			if (m_ExClimbResult.m_bIsClimb || m_ExClimbResult.m_bIsClimbOver)
@@ -7445,12 +7668,14 @@ class eAIBase: PlayerBase
 		//! Following is equivalent to vanilla PlayerBase::CanClimb
 
 		if (GetBrokenLegs() == eBrokenLegs.BROKEN_LEGS)
-		{
 			return false;
-		}
 			
 		if (climbType == 1 && !CanConsumeStamina(EStaminaConsumers.VAULT))
-			return false;
+			return false;	
+		
+		//! vault from water allowed
+		if (IsSwimming())
+			return true;
 		
 		if (climbType == 2 && (!CanConsumeStamina(EStaminaConsumers.CLIMB) || GetBrokenLegs() != eBrokenLegs.NO_BROKEN_LEGS))
 			return false;
@@ -7521,10 +7746,10 @@ class eAIBase: PlayerBase
 
 			vector surfacePosition = ExpansionStatic.GetSurfaceRoadPosition(unitPosition + checkDirection);
 			//! Swim start water level = 1.5 m, see DayZPlayerUtils::CheckWaterLevel
-			if (!GetGroup().IsFormationLeaderSwimming() && GetGame().GetWaterDepth(surfacePosition) > 1.5)
+			if (!m_PathFinding.m_IsSwimmingEnabled && GetGame().GetWaterDepth(surfacePosition) > 1.5)
 			{
 			#ifdef DIAG_DEVELOPER
-				Expansion_DebugObject(1344, surfacePosition, "ExpansionDebugRodBig_Blue", checkDirection);
+				Expansion_DebugObject(1344, unitPosition + checkDirection, "ExpansionDebugRodBig_Blue", checkDirection, surfacePosition);
 			#endif
 				return false;
 			}
@@ -7700,9 +7925,19 @@ class eAIBase: PlayerBase
 			}
 		}
 */
-		//! https://feedback.bistudio.com/T173348
 		bool isFallSafe;
-		if (fallHeight <= DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW || (GetHealth01() - Math.InverseLerp(DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW, DayZPlayerImplementFallDamage.HEALTH_HEIGHT_HIGH, fallHeight) >= 0.7))
+
+		vector waterCheckPosition = checkPosition;
+		float waterDepth = GetGame().GetWaterDepth(checkPosition);
+		if (waterDepth > 0.0)
+		{
+			waterCheckPosition[1] = waterCheckPosition[1] + waterDepth;
+			fallHeight -= waterDepth;
+		}
+		
+		if (waterDepth > 1.5 && ExpansionStatic.SurfaceIsWater(waterCheckPosition))
+			isFallSafe = true;  //! Falling into water that is deep enough for swimming is safe
+		else if (fallHeight <= DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW || (GetHealth01() - Math.InverseLerp(DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW, DayZPlayerImplementFallDamage.HEALTH_HEIGHT_HIGH, fallHeight) >= 0.7))
 			isFallSafe = true;
 
 	#ifdef DIAG_DEVELOPER
@@ -7749,16 +7984,37 @@ class eAIBase: PlayerBase
 		m_JumpClimb.JumpOrClimb();
 	}
 
+	bool eAI_IsLargeGate(Object obj)
+	{
+		string type = obj.GetType();
+
+		type.ToLower();
+
+		if (type.IndexOf("gate") > -1)
+		{
+			vector minMax[2];
+			if (obj.GetCollisionBox(minMax) && vector.DistanceSq(minMax[0], minMax[1]) > 9.0)
+				return true;
+		}
+
+		return false;
+	}
+
 	bool HandleBuildingDoors(eAICommandMove hcm, float pDt)
 	{
 		//if (!m_PathFinding.IsDoor())
 			//return;
 
-		BuildingBase cover;
-		if (!m_PathFinding.m_IsBlocked && !hcm.IsBlocked() && (!m_eAI_CurrentCoverObject || !Class.CastTo(cover, m_eAI_CurrentCoverObject) || cover.Expansion_IsEnterable()))
+		if (m_eAI_PositionIsFinal && Math.Round(hcm.GetCurrentMovementSpeed()) == 0.0)
 			return false;
 
-		if (m_eAI_PositionIsFinal && Math.Round(hcm.GetCurrentMovementSpeed()) == 0.0)
+		int time = GetGame().GetTime();
+
+		if (time - m_eAI_LastDoorInteractionTime < 1000)
+			return false;
+
+		BuildingBase cover;
+		if (!hcm.IsBlockedByBuildingWithDoor() && (!m_eAI_CurrentCoverObject || !Class.CastTo(cover, m_eAI_CurrentCoverObject) || cover.Expansion_IsEnterable()))
 			return false;
 
 		vector position = m_ExTransformPlayer[3] + (m_ExTransformPlayer[1] * 1.1);
@@ -7797,7 +8053,6 @@ class eAIBase: PlayerBase
 		if (!DayZPhysics.RaycastRVProxy(params, results, excluded))
 			return false;
 
-		int time = GetGame().GetTime();
 		int inactiveDuration;  //! ms
 
 		foreach (auto result : results)
@@ -7822,16 +8077,16 @@ class eAIBase: PlayerBase
 					{
 						//! If we're blocked less than 3 seconds, and there's enough free space to move fwd/left/right,
 						//! and speed limit is zero or movement speed is zero or velocity is higher than 0.001 m/s, ignore opened door
-						if (hcm.GetBlockedTime() < 3.0 && (CheckFreeSpace(vector.Forward, 0.3, false) || CheckFreeSpace(vector.Aside, 0.5, false) || CheckFreeSpace(-vector.Aside, 0.5, false)) && (m_MovementSpeedLimit == 0 || Math.Floor(hcm.GetCurrentMovementSpeed()) == 0.0 || hcm.GetPositionTime() < 1.5))
+						if (m_eAI_BlockedTime < 3.0 && (CheckFreeSpace(vector.Forward, 0.3, false) || CheckFreeSpace(vector.Aside, 0.5, false) || CheckFreeSpace(-vector.Aside, 0.5, false)) && (m_MovementSpeedLimit == 0 || Math.Floor(hcm.GetCurrentMovementSpeed()) == 0.0 || m_eAI_PositionTime < 1.5))
 						{
-							if (hcm.IsBlocked() && hcm.GetBlockedTime() > 0.5)
+							if (hcm.IsBlocked() && m_eAI_BlockedTime > 0.5)
 							{
 								m_PathFinding.ForceRecalculate(true);
-								continue;
+								break;
 							}
-							else if (hcm.GetBlockedTime() < 0.5)
+							else if (m_eAI_BlockedTime < 4.0 - hcm.GetCurrentMovementSpeed())
 							{
-								continue;
+								break;
 							}
 						}
 					}
@@ -7840,7 +8095,7 @@ class eAIBase: PlayerBase
 			else if (!isEnterable)
 			{
 				//! Do not open doors on structures that cannot be entered, e.g. wrecks (less chance of getting stuck on them when closed)
-				continue;
+				break;
 			}
 			else if (building.IsDoorLocked(doorIndex))
 			{
@@ -7851,11 +8106,12 @@ class eAIBase: PlayerBase
 					info.AddAI(this);
 				}
 
-				continue;
+				break;
 			}
 
-			if (time - building.m_eAI_LastDoorInteractionTime[doorIndex] < 1500)
-				continue;
+			int timeTresh = building.eAI_GetDoorAnimationTime(doorIndex) * 1000;
+			if (time - building.m_eAI_LastDoorInteractionTime[doorIndex] < timeTresh + 500)
+				break;
 
 			/**
 			 * TODO: Use FSM events to notify that the door should be opened. 
@@ -7871,7 +8127,7 @@ class eAIBase: PlayerBase
 			if (!isDoorOpen && !m_eAI_Halt)
 			{
 				eAI_SetHalt(true);
-				GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(eAI_SetHalt, 650, false, false);
+				GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).CallLater(eAI_SetHalt, timeTresh * 0.65, false, false);
 			}
 
 			//! Prevent AI getting pushed by opening/closing door by temporarily disabling collision/gravity (EXPERIMENTAL)
@@ -7901,7 +8157,8 @@ class eAIBase: PlayerBase
 			
 			ActionInteractBaseCB.Cast(AddCommandModifier_Action(DayZPlayerConstants.CMD_ACTIONMOD_OPENDOORFW,ActionInteractBaseCB));
 
-			building.m_eAI_LastDoorInteractionTime[doorIndex] = time;
+			building.m_eAI_LastDoorInteractionTime[doorIndex] = time;  //! To prevent any AI from interacting with this specific door (cooldown)
+			m_eAI_LastDoorInteractionTime = time;  //! To prevent this AI from interacting with any door (cooldown)
 			return true;
 		}
 

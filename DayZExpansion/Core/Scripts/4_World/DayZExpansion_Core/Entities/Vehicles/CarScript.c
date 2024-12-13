@@ -244,7 +244,16 @@ modded class CarScript
 		if (!super.EEOnDamageCalculated(damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef))
 			return false;
 
-		return m_ExpansionVehicle.CanBeDamaged();
+		if (!m_ExpansionVehicle.CanBeDamaged())
+			return false;
+
+		if (damageType == DT_EXPLOSION)
+		{
+			if (!ExpansionDamageSystem.OnExplosionDamageCalculated(damageResult, source, this, component, dmgZone, ammo, modelPos, speedCoef, true))
+				return false;
+		}
+
+		return true;
 	}
 
 	bool Expansion_CanGetInSeat(PlayerBase player, int seatIdx)

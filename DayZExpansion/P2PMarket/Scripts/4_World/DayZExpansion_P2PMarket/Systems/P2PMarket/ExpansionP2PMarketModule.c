@@ -1298,7 +1298,11 @@ class ExpansionP2PMarketModule: CF_ModuleWorld
 			GetExpansionSettings().GetLog().PrintLog("[P2P Market] Player \"" + identity.GetName() + "\" (id=" + identity.GetId() + ")" + " has purchased \"" + listing.GetClassName() + "\" for a price of " + messagePriceStringLog + " (globalID=" + globalIDText + ")");
 		}
 		
-		MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_OnP2PMarketPurchase(playerUID, messagePrice, loadedEntity);
+		MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+		if (missionWorld)
+		{
+			missionWorld.Expansion_OnP2PMarketPurchase(playerUID, messagePrice, loadedEntity);
+		}
 	}
 
 	//! Client

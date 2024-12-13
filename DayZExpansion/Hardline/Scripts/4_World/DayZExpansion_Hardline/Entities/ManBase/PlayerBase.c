@@ -245,7 +245,11 @@ modded class PlayerBase
 			if (!saved)
 				Expansion_SaveHardlineData(true);
 
-			MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_OnPlayerFactionChange(this, oldFactionTypeID, newFactionTypeID);
+			MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+			if (missionWorld)
+			{
+				missionWorld.Expansion_OnPlayerFactionChange(this, oldFactionTypeID, newFactionTypeID);
+			}
 
 			m_Expansion_HardlineData.SendFactionReputation(GetIdentity());
 		}

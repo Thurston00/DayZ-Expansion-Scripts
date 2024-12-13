@@ -76,6 +76,11 @@ class ExpansionDebugObject: Building
 			Delete();
 	}
 
+	override bool CanObstruct()
+	{
+		return false;
+	}
+
 	override void OnVariablesSynchronized()
 	{
 		super.OnVariablesSynchronized();

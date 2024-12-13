@@ -42,7 +42,6 @@ class eAICommandMove: ExpansionHumanCommandScript
 	private vector m_PathAngles;
 	private vector m_PathDir2D;
 	private vector m_PathDir2DNormalized;
-	private float m_WaypointTime;
 	private float m_WaypointDistance;
 	private float m_WaypointDistance2DSq;
 	private float m_MinFinal = 0.3;
@@ -64,7 +63,6 @@ class eAICommandMove: ExpansionHumanCommandScript
 	private float m_MovementDirection;
 	private bool m_ForceMovementDirection;
 	private float m_TargetMovementDirection;
-	private float m_PositionTime;
 
 	private float m_AimLR;
 	private float m_AimUD;
@@ -95,7 +93,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 	private float m_BlockedRightDist;
 	private bool m_LastBlockedBackward;
 	private bool m_LastBlocked;
-	private float m_BlockedTime;
+	private bool m_IsBlockedByBuildingWithDoor;
 	private float m_TurnDirection = 45.0;
 	private int m_TurnOverride;
 	private float m_TurnDirectionCWTime;
@@ -411,7 +409,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 					}
 				}
 
-				if (!m_PathFinding.m_IsUnreachable && (m_PathFinding.m_IsTargetUnreachable || (!m_IsSwimming && !m_Unit.GetGroup().IsFormationLeaderSwimming())))
+				if (!m_PathFinding.m_IsUnreachable && (m_PathFinding.m_IsTargetUnreachable || (!m_IsSwimming && !m_PathFinding.m_IsSwimmingEnabled && !m_Unit.GetGroup().IsFormationLeaderSwimming() && m_Unit.GetCurrentWaterLevel() < -0.5)))
 				{
 					//! Don't go into deep water
 					surfacePosition = ExpansionStatic.GetSurfaceRoadPosition(position + fb);
@@ -421,7 +419,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 						m_PathFinding.m_IsUnreachable = true;
 						m_PathFinding.m_IsTargetUnreachable = true;
 				#ifdef DIAG_DEVELOPER
-						m_Unit.Expansion_DebugObject(1343, surfacePosition, "ExpansionDebugRodBig_Blue", fb);
+						m_Unit.Expansion_DebugObject(1343, position + fb, "ExpansionDebugRodBig_Blue", fb, surfacePosition);
 					}
 					else
 					{
@@ -458,12 +456,22 @@ class eAICommandMove: ExpansionHumanCommandScript
 				m_IsSwimming = true;
 				m_Table.CallSwim(this, 1, 1.0);
 				m_Unit.PhysicsEnableGravity(false);
-				m_Unit.OnCommandSwimStart();
+
+				if (!m_Unit.m_eAI_IsSwimming)
+					m_Unit.OnCommandSwimStart();
+				else
+					EXTrace.Print(EXTrace.AI, m_Unit, "Skipping OnCommandSwimStart since we were already swimming");
 			}
 			else
 			{
-				//m_Table.SetWaterLevel(this, Math.Clamp(wl[1], 0.0, 1.0));  //! Doesn't seem to be used in vanilla, can be set to force wading in water, but seems to "stick" until AI stops moving
-				m_Unit.SetCurrentWaterLevel(wl[1]);
+				//m_Table.SetWaterLevel(this, Math.Clamp(characterDepth, 0.0, 1.0));  //! Doesn't seem to be used in vanilla, can be set to force wading in water, but seems to "stick" until AI stops moving
+
+				//! Disable swimming once we are 3.5m above sea level
+				if (characterDepth < -3.5 && m_PathFinding.m_IsSwimmingEnabled && !m_Unit.m_eAI_EffectArea && m_Unit.m_eAI_SurfaceY >= g_Game.SurfaceGetSeaLevelMin())
+				{
+					if (leader == m_Unit || !leader.IsSwimming())
+						m_PathFinding.EnableSwimming(false, false);
+				}
 			}
 		}
 		else
@@ -472,17 +480,16 @@ class eAICommandMove: ExpansionHumanCommandScript
 			{
 				m_IsSwimming = false;
 				m_Table.CallSwim(this, 0, 0.0);
-				m_Unit.PhysicsEnableGravity(true);
-				m_Unit.OnCommandSwimFinish();
 			}
 		}
 
-		if (characterDepth < -0.5 && m_PathFinding.m_IsSwimmingEnabled)
+		if (!m_IsSwimming && m_Unit.m_eAI_IsSwimming)
 		{
-			if (leader == m_Unit || !leader.IsSwimming())
-				m_PathFinding.EnableSwimming(false);
+			m_Unit.PhysicsEnableGravity(true);
+			m_Unit.OnCommandSwimFinish();
 		}
 
+		m_Unit.SetCurrentWaterLevel(characterDepth);
 		m_Unit.m_eAI_IsSwimming = m_IsSwimming;
 
 		bool blockedForward;
@@ -610,9 +617,9 @@ class eAICommandMove: ExpansionHumanCommandScript
 				speedThreshold *= (1.0 - m_Unit.m_InjuryHandler.GetInjuryAnimValue() * 0.9);
 			}
 			if (velocity.LengthSq() < speedThreshold && !m_Unit.GetActionManager().GetRunningAction() && !m_Unit.IsRaised())
-				m_PositionTime += pDt;  //! We don't seem to be actually moving
+				m_Unit.m_eAI_PositionTime += pDt;  //! We don't seem to be actually moving
 			else
-				m_PositionTime = 0;
+				m_Unit.m_eAI_PositionTime = 0;
 
 			vector checkDir;
 
@@ -628,7 +635,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 					blockedBackward = this.Raycast(position, checkDir, backwardPos, outNormal, hitFraction, checkDir, 0.5, true, m_BlockingObject);
 				}
 
-				if (!blockedBackward && m_PositionTime > 3.0)
+				if (!blockedBackward && m_Unit.m_eAI_PositionTime > 3.0)
 					blockedBackward = true;
 
 				if (blockedBackward)
@@ -646,7 +653,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 				checkDir = position + 0.5 * fb;
 				blockedForward = this.Raycast(position, checkDir, forwardPos, outNormal, hitFraction, position + fb * m_MovementSpeed, 0.5, true, m_BlockingObject, true);
 
-				if (!blockedForward && m_PositionTime > 3.0)
+				if (!blockedForward && m_Unit.m_eAI_PositionTime > 3.0)
 					blockedForward = true;
 
 				if (blockedForward)
@@ -669,11 +676,11 @@ class eAICommandMove: ExpansionHumanCommandScript
 			{
 				blockedFwdOrBwd = true;
 				if (m_LastBlocked)
-					m_BlockedTime += pDt;
+					m_Unit.m_eAI_BlockedTime += pDt;
 			}
 			else
 			{
-				m_BlockedTime = 0.0;
+				m_Unit.m_eAI_BlockedTime = 0.0;
 			}
 
 			m_LastBlocked = blockedFwdOrBwd;
@@ -694,12 +701,12 @@ class eAICommandMove: ExpansionHumanCommandScript
 				vector checkLeft = position + 0.25 * lr;
 				vector checkRight = position - 0.25 * lr;
 				blockedLeft = this.Raycast(position, checkLeft, leftPos, outNormal, hitFraction, checkDir + lr, 0.5);
-				if (!blockedLeft && m_PositionTime > 3.0)
+				if (!blockedLeft && m_Unit.m_eAI_PositionTime > 3.0)
 					blockedLeft = true;
 				if (blockedLeft)
 					m_Unit.Expansion_DebugObject_Deferred(BLOCKED_LEFT_HITPOSITION, leftPos, "ExpansionDebugBox_Purple", outNormal);
 				blockedRight = this.Raycast(position, checkRight, rightPos, outNormal, hitFraction, checkDir - lr, 0.5);
-				if (!blockedRight && m_PositionTime > 3.0)
+				if (!blockedRight && m_Unit.m_eAI_PositionTime > 3.0)
 					blockedRight = true;
 				if (blockedRight)
 					m_Unit.Expansion_DebugObject_Deferred(BLOCKED_RIGHT_HITPOSITION, rightPos, "ExpansionDebugBox_Purple", outNormal);
@@ -980,12 +987,16 @@ class eAICommandMove: ExpansionHumanCommandScript
 			switch (m_Stance)
 			{
 				case DayZPlayerConstants.STANCEIDX_CROUCH:
-					if (characterDepth >= 0.3)  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
+					if (characterDepth >= 0.3 && !m_Unit.GetActionManager().GetRunningAction())  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
 						OverrideStance(DayZPlayerConstants.STANCEIDX_ERECT);
 					speedLimit = m_SpeedLimit;
 					break;
 				case DayZPlayerConstants.STANCEIDX_PRONE:
-					if (characterDepth >= 0.3)  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
+					if (m_Unit.GetActionManager().GetRunningAction())
+					{
+						speedLimit = 0;  //! Have to stop moving else it breaks animation state
+					}
+					else if (characterDepth >= 0.3)  //! Neck position when crouched: 0.8 m above ground, +- 0.5 m tide tolerance
 					{
 						OverrideStance(DayZPlayerConstants.STANCEIDX_ERECT);
 						speedLimit = m_SpeedLimit;
@@ -995,7 +1006,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 						OverrideStance(DayZPlayerConstants.STANCEIDX_CROUCH);
 						speedLimit = m_SpeedLimit;
 					}
-					else if (m_Unit.IsRaised() || m_Unit.GetWeaponManager().IsRunning() || m_Unit.GetActionManager().GetRunningAction())
+					else if (m_Unit.IsRaised() || m_Unit.GetWeaponManager().IsRunning())
 					{
 						speedLimit = 0;  //! Have to stop moving else it breaks animation state
 					}
@@ -1012,7 +1023,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			//! Limit speed to jog when moving bwd, avoiding obstacles, or going downhill
 			if (speedLimit > 2)
 			{
-				if (Math.AbsFloat(m_MovementDirection) > 90 || m_OverrideMovementTimeout > 0 || ExpansionMath.RelAngle(m_PathAngles[1]) < -40.0)
+				if (Math.AbsFloat(m_MovementDirection) > 90 || m_OverrideMovementTimeout > 0 || (!m_IsSwimming && ExpansionMath.RelAngle(m_PathAngles[1]) < -25.0))
 					speedLimit = 2;
 			}
 		}
@@ -1066,7 +1077,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			m_ForceMovementDirection = true;
 		}
 		//! Turn towards aim direction when raised but keep moving in waypoint direction (strafe/backpedal if necessary)
-		else if (m_MovementSpeed > 0 && m_Unit.IsRaised())
+		else if (m_MovementSpeed > 0 && m_Unit.IsRaised() && m_WaypointDistance2DSq > 0.0001)
 		{
 			vector aimDir = m_Unit.GetAimDirection();
 			float aimAngle = aimDir.VectorToAngles()[0];
@@ -1105,7 +1116,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 		bool hasReachedWaypoint = HasReachedWaypoint(isPathPointFinal);
 
-		if (m_MovementSpeed > 0.0 && m_Waypoint != position && m_PositionTime > 3.0 && !m_Unit.IsClimbing() && !m_Unit.IsFalling())
+		if (m_MovementSpeed > 0.0 && m_Waypoint != position && m_Unit.m_eAI_PositionTime > 3.0 && !m_Unit.IsClimbing() && !m_Unit.IsFalling())
 		{
 			surfacePosition = ExpansionStatic.GetSurfaceRoadPosition(waypoint, RoadSurfaceDetection.CLOSEST);
 			if (waypoint[1] < surfacePosition[1])
@@ -1116,7 +1127,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			{
 				m_Unit.SetPosition(waypoint);  //! OH GOD THE HACKS
 				hasReachedWaypoint = true;
-				m_PositionTime = 0.0;
+				m_Unit.m_eAI_PositionTime = 0.0;
 
 			#ifdef DIAG_DEVELOPER
 				msg = "Teleported from " + position + " to " + waypoint + " (" + Math.Sqrt(distSq) + " m)";
@@ -1147,8 +1158,17 @@ class eAICommandMove: ExpansionHumanCommandScript
 					//ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " final point - recalc path");
 				//#endif
 
-					m_PathFinding.ForceRecalculate(true);
+					if (m_Unit.eAI_CanEnableSwimming())
+						m_PathFinding.EnableSwimming(true);
+					else
+						m_PathFinding.ForceRecalculate(true);
 				}
+			#ifdef DIAG_DEVELOPER
+				else
+				{
+					m_Unit.Expansion_DebugObject_Deferred(3141, m_PathFinding.GetTarget() - "0 4.5 0", "ExpansionDebugNoticeMe_Black", m_Direction);
+				}
+			#endif
 			//#ifdef DIAG_DEVELOPER
 				//m_Unit.Expansion_DeleteDebugObject(11111 + m_PathFinding.m_PointIdx);
 			//#endif
@@ -1289,17 +1309,29 @@ class eAICommandMove: ExpansionHumanCommandScript
 		}
 	#endif
 
-		if (m_Stance != -1 && (m_Stance != m_StancePrev || m_ForceStance) && m_StanceChangeTimeout <= 0.0 && !isBusy && !m_Unit.IsSwimming() && !m_Unit.GetEmoteManager().IsEmotePlaying())
+		if (m_Stance != -1 && (m_Stance != m_StancePrev || m_ForceStance) && m_StanceChangeTimeout <= 0.0 && !isBusy && !m_Unit.IsSwimming() && !m_Unit.GetEmoteManager().IsEmotePlaying() && !m_Unit.GetActionManager().GetRunningAction())
 		{
 			//! Can't go from erect to prone or prone to erect directly, need to crouch first
 			//! else it breaks character to surface alignment and hitbox
-			switch (m_StancePrev)
+			if (m_Stance != m_StancePrev)
 			{
-				case DayZPlayerConstants.STANCEIDX_ERECT:
-				case DayZPlayerConstants.STANCEIDX_PRONE:
-					if (m_Stance != DayZPlayerConstants.STANCEIDX_CROUCH)
-						m_Stance = DayZPlayerConstants.STANCEIDX_CROUCH;
-					break;
+				switch (m_StancePrev)
+				{
+					case DayZPlayerConstants.STANCEIDX_ERECT:
+					case DayZPlayerConstants.STANCEIDX_PRONE:
+						if (m_Stance != DayZPlayerConstants.STANCEIDX_CROUCH)
+							m_Stance = DayZPlayerConstants.STANCEIDX_CROUCH;
+						break;
+				}
+
+				if (m_Stance == DayZPlayerConstants.STANCEIDX_PRONE || m_StancePrev == DayZPlayerConstants.STANCEIDX_PRONE)
+					m_StanceChangeTimeout = 0.75;  //! Crouch to prone and prone to crouch
+				else
+					m_StanceChangeTimeout = 0.3;  //! Erect to crouch and crouch to erect
+			}
+			else
+			{
+				m_StanceChangeTimeout = 0.75;  //! Safety
 			}
 
 		#ifdef DIAG_DEVELOPER
@@ -1307,13 +1339,17 @@ class eAICommandMove: ExpansionHumanCommandScript
 		#endif
 
 			m_Table.SetStance(this, m_Stance);
-			m_StanceChangeTimeout = 0.5 * Math.AbsFloat(Math.Max(m_StancePrev, 0) - m_Stance);
+
 			m_StancePrev = m_Stance;
 			m_ForceStance = false;
 		}
 
 		if (!IsChangingStance() && !isBusy && !m_Unit.IsSwimming() && !m_Unit.GetEmoteManager().IsEmotePlaying())
 		{
+			//! Head position standing 1.6m, crouched 1m, prone 0.3m
+			//! + 0.2m = full character height (not including gear)
+			//! @note make sure that the 2nd raycast (the one checking if there is enough space to stand up)
+			//! has a higher endpoint Y than the first one, else we could get stuck in a stance change loop!
 			vector head = m_Unit.GetBonePositionWS(m_Unit.GetBoneIndexByName("head"));
 			vector hitPosition;
 			vector hitNormal;
@@ -1346,7 +1382,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 				m_Unit.Expansion_DebugObject_Deferred(1122, hitPosition, "ExpansionDebugSphereSmall_Red", vector.Zero, hitPosition - hitNormal);
 			#endif
 			}
-			else if (m_Unit.m_eAI_StancePreference != -1 && m_Stance != m_Unit.m_eAI_StancePreference && !DayZPhysics.RaycastRV(position + "0 0.3 0", position + Vector(0, 0.3 + (2.0 - m_Unit.m_eAI_StancePreference) * 0.75, 0), hitPosition, hitNormal, contactComponent, results, null, m_Unit, false, false, ObjIntersectView, 0.1))
+			else if (m_Unit.m_eAI_StancePreference != -1 && m_Stance != m_Unit.m_eAI_StancePreference && !DayZPhysics.RaycastRV(position + "0 0.3 0", position + Vector(0, 0.5 + (2.0 - m_Unit.m_eAI_StancePreference) * 0.75, 0), hitPosition, hitNormal, contactComponent, results, null, m_Unit, false, false, ObjIntersectView, 0.1))
 			{
 				m_ForceStance = true;
 				m_Stance = m_Unit.m_eAI_StancePreference;
@@ -1604,6 +1640,8 @@ class eAICommandMove: ExpansionHumanCommandScript
 		vector endPos = endRV + CHECK_MIN_HEIGHT;
 		bool hit;
 
+		m_IsBlockedByBuildingWithDoor = false;
+
 		//! 1st raycast specifically for trees
 		int contactComponent;
 		set<Object> results();
@@ -1641,6 +1679,12 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 					blockingObject = obj;
 				}
+				else if (obj.IsBuilding())
+				{
+					BuildingBase building;
+					if (Class.CastTo(building, obj) && building.GetDoorCount() > 0)
+						m_IsBlockedByBuildingWithDoor = true;
+				}
 			}
 		}
 
@@ -1676,8 +1720,12 @@ class eAICommandMove: ExpansionHumanCommandScript
 						m_PathFinding.m_IsTargetUnreachable = true;
 						m_PathFinding.m_IsUnreachable = true;
 					}
-					else if (m_BlockedTime > 0.5)
+					else if ((!m_IsSwimming && m_Unit.m_eAI_BlockedTime > 0.1) || m_Unit.m_eAI_BlockedTime > 0.8)
 					{
+						//! @note the blocked time treshold of 0.8 has been very carefully fine-tuned to avoid recalculation
+						//! at critical points while swimming.
+						//! To test this on Chernarus, spawn AI at <14297.8, -0.36239, 13245.3> (in water) and set a waypoint
+						//! at <14297.7, 3.31738, 13250.3> (on pier)
 						m_PathFinding.ForceRecalculate();
 					}
 				}
@@ -1714,7 +1762,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 					m_PathFinding.m_IsTargetUnreachable = true;
 					m_PathFinding.m_IsUnreachable = true;
 				}
-				else
+				else if ((!m_IsSwimming && m_Unit.m_eAI_BlockedTime > 0.1) || m_Unit.m_eAI_BlockedTime > 0.8)
 				{
 					m_PathFinding.ForceRecalculate();
 				}
@@ -1791,6 +1839,11 @@ class eAICommandMove: ExpansionHumanCommandScript
 		return true;
 	}
 
+	bool IsBlockedByBuildingWithDoor()
+	{
+		return m_IsBlockedByBuildingWithDoor;
+	}
+
 	bool CheckBlocked()
 	{
 		if (!IsBlocked() || !CheckBlockedLeft() || !CheckBlockedRight())
@@ -1864,21 +1917,11 @@ class eAICommandMove: ExpansionHumanCommandScript
 		return m_BlockingObject;
 	}
 
-	float GetBlockedTime()
-	{
-		return m_BlockedTime;
-	}
-
-	float GetPositionTime()
-	{
-		return m_PositionTime;
-	}
-
 	bool ObjectCanLimitStance(Object obj)
 	{
 		if (obj.IsTree())
 		{
-			if (m_BlockedTime < 1.0)
+			if (m_Unit.m_eAI_BlockedTime < 1.0)
 				return false;
 		}
 		else if (obj.IsBush())

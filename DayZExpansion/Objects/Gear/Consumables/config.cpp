@@ -7,6 +7,7 @@ class CfgPatches
 		requiredVersion=0.1;
 		requiredAddons[]=
 		{
+			"DZ_Gear_Drinks",
 			"DZ_Gear_Food"
 		};
 	};

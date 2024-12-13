@@ -207,7 +207,16 @@ modded class DayZPlayerImplement
 		if (!super.EEOnDamageCalculated(damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef))
 			return false;
 
-		return Expansion_CanBeDamaged(ammo);
+		if (!Expansion_CanBeDamaged(ammo))
+			return false;
+
+		if (damageType == DT_EXPLOSION)
+		{
+			if (!ExpansionDamageSystem.OnExplosionDamageCalculated(damageResult, source, this, component, dmgZone, ammo, modelPos, speedCoef, true))
+				return false;
+		}
+
+		return true;
 	}
 
 	override void EEHitBy(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
@@ -597,6 +606,9 @@ modded class DayZPlayerImplement
 
 	bool Expansion_IsAnimationIdle()
 	{
+		HumanCommandAdditives ad = GetCommandModifier_Additives();
+		if (ad.IsModifierActive())
+			return false;
 		if (m_Expansion_HeadBoneIdleTime < 0.25)
 			return false;
 		if (m_Expansion_LHandBoneIdleTime < 0.25)

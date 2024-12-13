@@ -63,7 +63,7 @@ class ExpansionState_TraversingWaypoints: eAIState
 		if (pathFinding.m_TargetPosition == waypoint && !pathFinding.m_Recalculate)
 		{
 			//! If we only have two or less points total, we can be sure that endpoint is reachable and closest to target as possible
-			if (pathFinding.m_Count <= 2)
+			if (pathFinding.m_Count <= 2 && unit.GetCurrentWaterLevel() < -0.5)
 				targetPosition = pathFinding.GetEnd();
 			else
 				targetPosition = pathFinding.GetTarget();

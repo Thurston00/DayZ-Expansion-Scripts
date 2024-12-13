@@ -697,6 +697,9 @@
 				if (unit.IsUnconscious()) return FAIL;
 				if (unit.IsSwimming()) return FAIL;
 				
+				if (unit.eAI_IsChangingStance())
+					return FAIL;
+				
 				ItemBase hands = unit.GetItemInHands();
 				
 				//! If ruined, drop
@@ -803,7 +806,7 @@
 						}
 					}
 					
-					if (!preferExplosiveAmmo)
+					if (!preferTargetItem &amp;&amp; !preferExplosiveAmmo)
 					{
 						item = unit.eAI_GetWeaponToUse(true, false);
 						
@@ -875,6 +878,9 @@
 				if (unit.IsRestrained()) return FAIL;
 				if (unit.IsUnconscious()) return FAIL;
 				if (unit.IsSwimming()) return FAIL;
+				
+				if (unit.eAI_IsChangingStance())
+					return FAIL;
 				
 				if (unit.IsRaised()) return FAIL;
 				

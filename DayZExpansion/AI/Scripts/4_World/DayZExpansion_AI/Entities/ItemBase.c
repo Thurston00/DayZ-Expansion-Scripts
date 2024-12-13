@@ -70,6 +70,37 @@ modded class ItemBase
 		m_TargetInformation.OnHealthLevelChanged(oldLevel, newLevel, zone);
 
 		super.EEHealthLevelChanged(oldLevel, newLevel, zone);
+
+		if (!GetGame().IsServer())
+			return;
+
+		eAIBase ai;
+		if (Class.CastTo(ai, GetHierarchyRootPlayer()) && GetInventory().IsAttachment() && m_Initialized)
+			ai.eAI_UpdateProtectionLevels();
+	}
+
+	override void EEItemAttached(EntityAI item, string slot_name)
+	{
+		super.EEItemAttached(item, slot_name);
+
+		if (!GetGame().IsServer())
+			return;
+
+		eAIBase ai;
+		if (Class.CastTo(ai, GetHierarchyParent()))
+			ai.eAI_UpdateProtectionLevels(this, 1);
+	}
+
+	override void EEItemDetached(EntityAI item, string slot_name)
+	{
+		super.EEItemDetached(item, slot_name);
+
+		if (!GetGame().IsServer())
+			return;
+
+		eAIBase ai;
+		if (Class.CastTo(ai, GetHierarchyParent()))
+			ai.eAI_UpdateProtectionLevels(this, -1);
 	}
 
 	override void OnInventoryEnter(Man player)

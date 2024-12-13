@@ -172,7 +172,7 @@ modded class ActionStartEngine
 				vehicle.EngineStart();
 				
 				if (action_data.m_Player.GetIdentity() && GetExpansionSettings().GetLog().VehicleEngine)
-					GetExpansionSettings().GetLog().PrintLog("[VehicleEngine] Player " + action_data.m_Player.GetIdentity().GetName() + " [uid=" + action_data.m_Player.GetIdentity().GetId() + "] started vehicle " + vehicle.GetDisplayName() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")");
+					GetExpansionSettings().GetLog().PrintLog("[VehicleEngine] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" [uid=" + action_data.m_Player.GetIdentity().GetId() + "] started vehicle " + vehicle.GetDisplayName() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")");
 			}
 		}
 	}

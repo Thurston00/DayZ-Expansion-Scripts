@@ -105,7 +105,7 @@ class eAIEntityTargetInformation: eAITargetInformation
 
 	override void OnHealthLevelChanged(int oldLevel, int newLevel, string zone)
 	{
-		if (GetGame().IsClient())
+		if (GetGame().IsClient() && m_Target.m_Initialized)
 			GetDayZGame().GetExpansionGame().m_FirearmFXHitObject = m_Target;
 	}
 };

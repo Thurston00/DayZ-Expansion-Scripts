@@ -95,6 +95,7 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 	static int Now;
 
 	static EntityAI s_SavedEntityToBeDeleted;
+	static EntityAI s_CurrentEntity;
 	static EntityAI s_CurrentRootEntity;
 	static int s_LastRestoredVersion;
 
@@ -178,6 +179,8 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 		if (!inventoryOnly || level > 0)
 			Save_Phase3(file, entity);
 
+		s_CurrentEntity = null;
+
 		if (!level)
 		{
 			EXTrace.Print(EXTrace.GENERAL_ITEMS, ExpansionEntityStorageModule, "Save " + s_CurrentRootEntity + " -> null");
@@ -257,6 +260,8 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 				return FAILURE;
 				break;
 		}
+
+		s_CurrentEntity = entity;
 
 		if (!level)
 		{
@@ -546,6 +551,8 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 			entity.Delete();
 		}
 
+		s_CurrentEntity = null;
+
 		if (!level)
 		{
 			EXTrace.Print(EXTrace.GENERAL_ITEMS, ExpansionEntityStorageModule, "Restore " + s_CurrentRootEntity + " -> null");
@@ -704,6 +711,8 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 			EXError.Error(null, errorMsg);
 			return false;
 		}
+
+		s_CurrentEntity = entity;
 
 		if (!level)
 		{
@@ -997,6 +1006,23 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 		return s_SavedEntityToBeDeleted;
 	}
 
+	/** @brief get current entity during entity storage save/restore operations
+	 * 
+	 * @note use only during Save/Restore! Will be nulled afterwards
+	 */
+	static EntityAI GetCurrentEntity()
+	{
+		return s_CurrentEntity;
+	}
+
+	static int IsCurrentEntity(EntityAI entity)
+	{
+		if (s_CurrentEntity == entity)
+			return true;
+
+		return false;
+	}
+
 	/** @brief get current root entity during entity storage save/restore operations
 	 * 
 	 * @note use only during Save/Restore! Will be nulled afterwards
@@ -1257,6 +1283,7 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 	{
 		s_LastRestoredVersion = 0;
 		EXTrace.Print(EXTrace.GENERAL_ITEMS, ExpansionEntityStorageModule, "ResetState " + s_CurrentRootEntity + " -> null");
+		s_CurrentEntity = null;
 		s_CurrentRootEntity = null;
 	}
 }

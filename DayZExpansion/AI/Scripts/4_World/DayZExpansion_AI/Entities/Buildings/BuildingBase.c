@@ -7,6 +7,7 @@ modded class BuildingBase
 	ref map<int, int> m_eAI_LastDoorInteractionTime = new map<int, int>;
 	ref map<int, ref eAIDoorTargetInformation> m_eAI_DoorTargetInformation;
 	bool m_eAI_PreventClimb;
+	ref map<int, float> m_eAI_DoorAnimationTime;
 
 	void BuildingBase()
 	{
@@ -118,6 +119,36 @@ modded class BuildingBase
 		}
 
 		return info;
+	}
+
+	float eAI_GetDoorAnimationTime(int doorIndex)
+	{
+		float time;
+
+		if (!m_eAI_DoorAnimationTime)
+			m_eAI_DoorAnimationTime = new map<int, float>;
+
+		if (!m_eAI_DoorAnimationTime.Find(doorIndex, time))
+		{
+			string path = CFG_VEHICLESPATH + " " + GetType() + " Doors";
+			int count = GetGame().ConfigGetChildrenCount(path);
+
+			if (doorIndex < count)
+			{
+				string name;
+				GetGame().ConfigGetChildName(path, doorIndex, name);
+				time = GetGame().ConfigGetFloat(path + " " + name + " animPeriod");
+			#ifdef DIAG_DEVELOPER
+				EXTrace.Print(EXTrace.AI, this, "eAI_GetDoorAnimationTime(" + doorIndex + ") " + GetType() + " Doors " + name + " animPeriod " + time);
+			#endif
+			}
+
+			time = Math.Max(time, 1.0);
+
+			m_eAI_DoorAnimationTime[doorIndex] = time;
+		}
+
+		return time;
 	}
 
 	/**

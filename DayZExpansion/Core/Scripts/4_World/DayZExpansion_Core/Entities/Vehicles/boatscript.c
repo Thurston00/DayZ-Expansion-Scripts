@@ -125,7 +125,16 @@ modded class BoatScript
 		if (!super.EEOnDamageCalculated(damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef))
 			return false;
 
-		return m_ExpansionVehicle.CanBeDamaged();
+		if (!m_ExpansionVehicle.CanBeDamaged())
+			return false;
+
+		if (damageType == DT_EXPLOSION)
+		{
+			if (!ExpansionDamageSystem.OnExplosionDamageCalculated(damageResult, source, this, component, dmgZone, ammo, modelPos, speedCoef, true))
+				return false;
+		}
+
+		return true;
 	}
 
 	override void EEHitBy(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)

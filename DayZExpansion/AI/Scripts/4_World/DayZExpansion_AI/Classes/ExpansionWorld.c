@@ -34,6 +34,14 @@ modded class ExpansionWorld
 			//include |= ExpansionLocationType.VIEWPOINT;
 
 			m_AIRoamingLocations = ExpansionLocatorStatic.GetWorldLocations(include);
+
+			auto settings = GetExpansionSettings().GetAI();
+			for (int i = m_AIRoamingLocations.Count() - 1; i >= 0; i--)
+			{
+				auto location = m_AIRoamingLocations[i];
+				if (settings.ExcludedRoamingLocations.Find(location.classname) > -1)
+					location.position = vector.Zero;  //! excluded
+			}
 		}
 	}
 

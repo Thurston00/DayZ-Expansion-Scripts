@@ -7350,11 +7350,6 @@ class CfgVehicles
 		scope=1;
 		model="\DZ\vehicles\wheeled\Truck_02\proxy\Truck_02_Wheel.p3d";
 	};
-	class bldr_prop_Truck_02_Wheel_Ruined: HouseNoDestruct
-	{
-		scope=1;
-		model="\DZ\vehicles\wheeled\Truck_02\proxy\Truck_02_ruined.p3d";
-	};
 	class bldr_prop_Truck_02_Door_1_1: HouseNoDestruct
 	{
 		scope=1;

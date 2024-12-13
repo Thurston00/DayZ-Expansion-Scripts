@@ -29,6 +29,7 @@ class ExpansionWeaponInfo
 	float m_AvgDmg;
 	float m_ReloadTimeMin = float.MAX;
 	float m_DPS;
+	bool m_AutoReload;
 	ExpansionWeaponType m_WeaponType;
 
 	void ExpansionWeaponInfo(Weapon_Base weapon)
@@ -50,6 +51,15 @@ class ExpansionWeaponInfo
 				EXTrace.Print(EXTrace.WEAPONS, null, type + " mode " + mode + " reload time " + reloadTime);
 			#endif
 				m_FireModes[fireMode] = i;
+
+				switch (fireMode)
+				{
+					case ExpansionFireMode.Burst:
+					case ExpansionFireMode.FullAuto:
+					case ExpansionFireMode.SemiAuto:
+						m_AutoReload = true;
+						break;
+				}
 			}
 		}
 
@@ -76,7 +86,7 @@ class ExpansionWeaponInfo
 			m_AvgDmg /= count;
 
 		//! DPS
-		if (m_ReloadTimeMin < float.MAX && !weapon.IsInherited(DoubleBarrel_Base))
+		if (m_ReloadTimeMin < float.MAX && m_AutoReload)
 			m_DPS = m_AvgDmg / m_ReloadTimeMin;
 		else
 			m_DPS = m_AvgDmg;

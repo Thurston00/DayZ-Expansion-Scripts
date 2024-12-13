@@ -442,7 +442,7 @@ class ExpansionTerritoryModule: CF_ModuleWorld
 		m_NextTerritoryID++;
 
 		if ( GetExpansionSettings().GetLog().Territory )
-			GetExpansionSettings().GetLog().PrintLog( "[Territory] Player \"" + sender.GetName() + "\" (id=" + senderID + ")" + " created territory " + territoryName + " at " + position );
+			GetExpansionSettings().GetLog().PrintLog( "[Territory] Player \"" + sender.GetName() + "\" (id=" + senderID + ")" + " created territory \"" + territoryName + "\" at " + position );
 		
 		ExpansionNotification("STR_EXPANSION_TERRITORY_TITLE", new StringLocaliser("STR_EXPANSION_TERRITORY_CREATED", territoryName), EXPANSION_NOTIFICATION_ICON_TERRITORY).Success(sender);
 		
@@ -627,7 +627,7 @@ class ExpansionTerritoryModule: CF_ModuleWorld
 			}
 		
 			if ( GetExpansionSettings().GetLog().Territory )
-				GetExpansionSettings().GetLog().PrintLog( "[Territory] Player \"" + sender.GetName() + "\" (id=" + playerUID + ")" + " deleted territory " + currentTerritory.GetTerritoryName() + " at " + currentTerritory.GetPosition() );
+				GetExpansionSettings().GetLog().PrintLog( "[Territory] Player \"" + sender.GetName() + "\" (id=" + playerUID + ")" + " deleted territory \"" + currentTerritory.GetTerritoryName() + "\" at " + currentTerritory.GetPosition() );
 			
 			//Don't forget to set it as null before to delete, to not do a infinte loop
 			flag.SetTerritory(null);
@@ -759,7 +759,7 @@ class ExpansionTerritoryModule: CF_ModuleWorld
 		}
 		
 		if ( sender && GetExpansionSettings().GetLog().Territory )
-			GetExpansionSettings().GetLog().PrintLog( "[Territory] Admin \"" + sender.GetName() + "\" (id=" + sender.GetId() + ")" + " deleted territory " + currentTerritory.GetTerritoryName() + " at " + currentTerritory.GetPosition() );
+			GetExpansionSettings().GetLog().PrintLog( "[Territory] Admin \"" + sender.GetName() + "\" (id=" + sender.GetId() + ")" + " deleted territory \"" + currentTerritory.GetTerritoryName() + "\" at " + currentTerritory.GetPosition() );
 		
 		//Don't forget to set it as null before to delete, to not do a infinte loop
 		flag.SetTerritory( null );

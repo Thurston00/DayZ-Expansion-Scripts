@@ -312,8 +312,6 @@ class ExpansionCommunityGoalsModule: CF_ModuleWorld
 		auto trace = EXTrace.Start(EXTrace.NAMALSKADVENTURE, this);
 #endif
 
-		MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_OnCommunityGoalReached(id, communityGoal);
-
 		if (!communityGoal.IsFinished())
 		{
 			//! Set goal to finished
@@ -324,6 +322,12 @@ class ExpansionCommunityGoalsModule: CF_ModuleWorld
 
 			//! Update module community goal data.
 			m_CommunityGoals.Set(id, communityGoal);
+			
+			MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+			if (missionWorld)
+			{
+				missionWorld.Expansion_OnCommunityGoalReached(id, communityGoal);
+			}
 		}
 	}
 

@@ -101,7 +101,7 @@ class eAIItemTargetInformation: eAIEntityTargetInformation
 
 			Magazine targetMag;
 
-			if (canBandage && ((shouldBandage && ai.GetBandageToUse()) || ai.m_eAI_Bandages.Count() >= 3))
+			if (canBandage && ((shouldBandage && ai.GetBandageToUse()) || (ai.m_eAI_Bandages.Count() >= 3 && !m_Item.IsClothing())))
 			{
 				//! Don't need to pick up bandage if AI should bandage and already has at least one in inventory,
 				//! or if AI shouldn't bandage and has 3 or more

@@ -52,6 +52,14 @@ modded class ItemBase
 
 	override void EEHitBy(TotalDamageResult damageResult, int damageType, EntityAI source, int component, string dmgZone, string ammo, vector modelPos, float speedCoef)
 	{
+	#ifdef DIAG_DEVELOPER
+		EXTrace.PrintHit(EXTrace.AI, this, "EEHitBy[" + m_eAI_DamageHandler.m_HitCounter + "]", damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
+
+	#ifdef EXPANSION_AI_DMGDEBUG_CHATTY
+		ExpansionStatic.MessageNearPlayers(GetPosition(), 100.0, "[" + ExpansionStatic.FormatFloat(GetGame().GetTickTime(), 3, false) + "] hit " + ToString() + " " + dmgZone);
+	#endif
+	#endif
+
 		m_TargetInformation.OnHit(damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
 
 		super.EEHitBy(damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
@@ -62,6 +70,37 @@ modded class ItemBase
 		m_TargetInformation.OnHealthLevelChanged(oldLevel, newLevel, zone);
 
 		super.EEHealthLevelChanged(oldLevel, newLevel, zone);
+
+		if (!GetGame().IsServer())
+			return;
+
+		eAIBase ai;
+		if (Class.CastTo(ai, GetHierarchyRootPlayer()) && GetInventory().IsAttachment() && m_Initialized)
+			ai.eAI_UpdateProtectionLevels();
+	}
+
+	override void EEItemAttached(EntityAI item, string slot_name)
+	{
+		super.EEItemAttached(item, slot_name);
+
+		if (!GetGame().IsServer())
+			return;
+
+		eAIBase ai;
+		if (Class.CastTo(ai, GetHierarchyParent()))
+			ai.eAI_UpdateProtectionLevels(this, 1);
+	}
+
+	override void EEItemDetached(EntityAI item, string slot_name)
+	{
+		super.EEItemDetached(item, slot_name);
+
+		if (!GetGame().IsServer())
+			return;
+
+		eAIBase ai;
+		if (Class.CastTo(ai, GetHierarchyParent()))
+			ai.eAI_UpdateProtectionLevels(this, -1);
 	}
 
 	override void OnInventoryEnter(Man player)
@@ -77,6 +116,7 @@ modded class ItemBase
 			return;
 		}
 
+		//! TODO: Latest 1.26 patch on 2024-11-19 added OnChildItemReceived which would be a better place for the following code
 		if (!GetGame().IsServer())
 			return;
 
@@ -89,6 +129,7 @@ modded class ItemBase
 	{
 		super.OnInventoryExit(player);
 
+		//! TODO: Latest 1.26 patch on 2024-11-19 added OnChildItemRemoved which would be a better place for the following code
 		if (!GetGame().IsServer())
 			return;
 

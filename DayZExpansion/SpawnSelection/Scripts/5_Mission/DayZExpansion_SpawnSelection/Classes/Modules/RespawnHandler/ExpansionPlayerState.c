@@ -3,7 +3,7 @@
  *
  * DayZ Expansion Mod
  * www.dayzexpansion.com
- * © 2022 DayZ Expansion Mod Team
+ * © 2024 DayZ Expansion Mod Team
  *
  * This work is licensed under the Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License. 
  * To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-nd/4.0/.
@@ -18,6 +18,7 @@ class ExpansionPlayerState
 	float m_HeatComfort;
 	float m_Wetness;
 	float m_Stamina;
+	float m_HeatBuffer;
 	vector m_Position;
 
 	void ExpansionPlayerState(PlayerBase player)
@@ -33,6 +34,7 @@ class ExpansionPlayerState
 		m_HeatComfort = player.GetStatHeatComfort().Get();
 		m_Wetness = player.GetStatWet().Get();
 		m_Stamina = player.GetStatStamina().Get();
+		m_HeatBuffer = player.GetStatHeatBuffer().Get();
 		m_Position = player.GetPosition();
 	}
 
@@ -44,5 +46,6 @@ class ExpansionPlayerState
 		player.GetStatHeatComfort().Set(m_HeatComfort);
 		player.GetStatWet().Set(m_Wetness);
 		player.GetStatStamina().Set(m_Stamina);
+		player.GetStatHeatBuffer().Set(m_HeatBuffer);
 	}
 }

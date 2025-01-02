@@ -23,8 +23,7 @@ modded class ExpansionMarketMenuItemManager
 				string att = atts[i];
 				att.ToLower();
 				ExpansionHardlineItemRarity rarity = GetExpansionSettings().GetHardline().GetItemRarityByType(att);
-				int required;
-				if (rarity && !m_MarketMenu.GetMarketModule().HasRepForRarity(player, rarity, required))
+				if (rarity && !m_MarketMenu.GetMarketModule().HasRepForRarity(player, rarity))
 					atts.Remove(i);
 			}
 		}

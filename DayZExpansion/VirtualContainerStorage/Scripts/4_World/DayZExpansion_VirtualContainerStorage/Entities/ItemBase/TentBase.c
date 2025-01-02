@@ -13,24 +13,8 @@
 //! Inherits from ItemBase
 modded class TentBase
 {
-	void TentBase()
-	{
-		if (!m_Expansion_GlobalID)
-			m_Expansion_GlobalID = new ExpansionGlobalID();
-		RegisterNetSyncVariableBool("m_Expansion_HasEntityStorage");
-	}
-
 	#ifdef EXPANSION_MODSTORAGE
-	override void CF_OnStoreSave(CF_ModStorageMap storage)
-	{
-		#ifdef SERVER
-		if (!m_Expansion_GlobalID.m_IsSet)
-			m_Expansion_GlobalID.Acquire();
-		#endif
-
-		super.CF_OnStoreSave(storage);
-	}
-	
+	//! Legacy, handled by ItemBase since BaseBuilding storage version 52
 	override bool CF_OnStoreLoad(CF_ModStorageMap storage)
 	{
 		if (!super.CF_OnStoreLoad(storage))
@@ -49,12 +33,4 @@ modded class TentBase
 		return true;
 	}
 	#endif
-
-	override void SetActions()
-	{
-		super.SetActions();
-
-		AddAction(ExpansionActionStoreContents);
-		AddAction(ExpansionActionRestoreContents);
-	}
 }

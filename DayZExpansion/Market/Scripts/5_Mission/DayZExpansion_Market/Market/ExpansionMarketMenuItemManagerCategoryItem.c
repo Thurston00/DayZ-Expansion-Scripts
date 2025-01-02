@@ -14,7 +14,6 @@ class ExpansionMarketMenuItemManagerCategoryItem: ExpansionScriptView
 {
 	protected ref ExpansionMarketMenuItemManagerCategoryItemController m_MarketItemManagerCategoryItemController;
 	protected ExpansionMarketMenu m_MarketMenu;
-	protected ref ExpansionMarketMenuItemManager m_MarketMenuItemManager;
 	protected string m_ItemClassName;
 	protected ButtonWidget item_element_lmbutton;
 	protected Widget item_element_background;
@@ -29,11 +28,10 @@ class ExpansionMarketMenuItemManagerCategoryItem: ExpansionScriptView
 	protected EntityAI m_Object;
 	protected ref ExpansionItemTooltip m_ItemTooltip;
 	
-	void ExpansionMarketMenuItemManagerCategoryItem(string itemClassName, ExpansionMarketMenu menu, ExpansionMarketMenuItemManager itemManager)
+	void ExpansionMarketMenuItemManagerCategoryItem(string itemClassName, ExpansionMarketMenu menu)
 	{
 		m_ItemClassName = itemClassName;
 		m_MarketMenu = menu;
-		m_MarketMenuItemManager = itemManager;
 		
 		if (!m_MarketItemManagerCategoryItemController)
 			m_MarketItemManagerCategoryItemController = ExpansionMarketMenuItemManagerCategoryItemController.Cast(GetController());
@@ -136,14 +134,20 @@ class ExpansionMarketMenuItemManagerCategoryItem: ExpansionScriptView
 
 		item_element_increment.Show(showInc);
 
-		bool showTooltip;
-		if (!m_CanBeAttachedOrReplaceConflicting && count == 0)
-			showTooltip = true;
-
-		item_element_tooltip.Show(showTooltip);
+		ShowTooltipCheck();
 
 		if (!IsVisible() && (m_CanBeAttached || m_CanBeAttachedOrReplaceConflicting))
 			Show();
+	}
+	
+	bool ShowTooltipCheck()
+	{
+		bool showTooltip;
+		if (!m_CanBeAttachedOrReplaceConflicting && GetCount() == 0)
+			showTooltip = true;
+
+		item_element_tooltip.Show(showTooltip);
+		return showTooltip;
 	}
 
 	bool IsSpecialCase(EntityAI parent)
@@ -251,14 +255,7 @@ class ExpansionMarketMenuItemManagerCategoryItem: ExpansionScriptView
 			case item_element_tooltip:
 			{
 				item_element_tooltip_icon.SetColor(GetExpansionSettings().GetMarket().MarketMenuColors.Get("ColorItemInfoAttachments"));
-				if (!m_Tooltip) 
-				{
-					m_Tooltip = new ExpansionMarketMenuTooltip();
-					m_Tooltip.SetTitle("#STR_EXPANSION_MARKET_TOOLTIP_ATTACHMENTS_TITLE");
-					m_Tooltip.SetText("#STR_EXPANSION_MARKET_TOOLTIP_ATTACHMENTS_DESC");
-					m_Tooltip.SetContentOffset(0.019531, 0);
-					m_Tooltip.Show();
-				}
+				UpdateTooltip();
 				break;
 			}
 			case item_element_increment:
@@ -317,6 +314,20 @@ class ExpansionMarketMenuItemManagerCategoryItem: ExpansionScriptView
 			
 		return false;
 	}
+	
+	void UpdateTooltip()
+	{
+		item_element_tooltip_icon.SetColor(GetExpansionSettings().GetMarket().MarketMenuColors.Get("ColorItemInfoAttachments"));
+		if (!m_Tooltip)
+		{
+			m_Tooltip = new ExpansionMarketMenuTooltip();
+		}
+		
+		m_Tooltip.SetTitle("#STR_EXPANSION_MARKET_TOOLTIP_ATTACHMENTS_TITLE");
+		m_Tooltip.SetText("#STR_EXPANSION_MARKET_TOOLTIP_ATTACHMENTS_DESC");
+		m_Tooltip.SetContentOffset(0.019531, 0);
+		m_Tooltip.Show();
+	}
 
 	void OnItemCountIncrement()
 	{
@@ -346,9 +357,9 @@ class ExpansionMarketMenuItemManagerCategoryItem: ExpansionScriptView
 		m_MarketMenu.GetSelectedMarketItem().SpawnAttachments.Insert(classNameToLower);
 		
 		//! UpdatePreview needs to be called before calling UpdateAttachments
-		m_MarketMenuItemManager.UpdatePreview();
+		m_MarketMenu.GetMarketMenuItemManager().UpdatePreview();
 		UpdateAttachments();
-		m_MarketMenuItemManager.UpdateMenuViews(false);
+		m_MarketMenu.GetMarketMenuItemManager().UpdateMenuViews(false);
 	}
 		
 	string GetSlotName(string className)
@@ -395,9 +406,9 @@ class ExpansionMarketMenuItemManagerCategoryItem: ExpansionScriptView
 		if (RemoveAttachment() > -1)
 		{	
 			//! UpdatePreview needs to be called before calling UpdateAttachments
-			m_MarketMenuItemManager.UpdatePreview();
+			m_MarketMenu.GetMarketMenuItemManager().UpdatePreview();
 			UpdateAttachments();
-			m_MarketMenuItemManager.UpdateMenuViews(false);
+			m_MarketMenu.GetMarketMenuItemManager().UpdateMenuViews(false);
 		}
 	}
 

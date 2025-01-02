@@ -21,9 +21,7 @@ modded class ExpansionMarketMenuItem
 		{
 			PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
 			ExpansionHardlineItemRarity rarity = GetExpansionSettings().GetHardline().GetItemRarityByType(GetMarketItem().ClassName);
-			int reqRep;
-			
-			if (rarity && !m_MarketModule.HasRepForRarity(player, rarity, reqRep))
+			if (rarity && !m_MarketModule.HasRepForRarity(player, rarity))
 			{
 				if (GetExpansionSettings().GetHardline().UseItemRarityForMarketPurchase)
 					m_HasRepBuy = false;
@@ -46,8 +44,7 @@ modded class ExpansionMarketMenuItem
 			for (int i = 0; i < GetMarketItem().SpawnAttachments.Count(); i++)
 			{
 				ExpansionHardlineItemRarity rarity = GetExpansionSettings().GetHardline().GetItemRarityByType(GetMarketItem().SpawnAttachments[i]);
-				int required;
-				if (rarity && !m_MarketModule.HasRepForRarity(player, rarity, required))
+				if (rarity && !m_MarketModule.HasRepForRarity(player, rarity))
 					GetMarketItem().SpawnAttachments.Remove(i);
 			}
 		}

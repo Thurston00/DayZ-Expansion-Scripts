@@ -27,8 +27,7 @@ modded class ExpansionMarketMenu
 		{
 			PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
 			ExpansionHardlineItemRarity rarity = settings.GetItemRarityByType(className);
-			int required;
-			if (rarity && !m_MarketModule.HasRepForRarity(player, rarity, required))
+			if (rarity && !m_MarketModule.HasRepForRarity(player, rarity))
 				return false;
 		}
 

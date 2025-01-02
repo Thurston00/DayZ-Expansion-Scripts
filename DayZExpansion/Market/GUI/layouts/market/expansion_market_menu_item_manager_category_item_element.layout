@@ -165,10 +165,22 @@ PanelWidgetClass ExpansionMarketMenuItemManagerCategoryItem {
      imageTexture "{BFA98ACC416B4CAF}DayZExpansion/Core/GUI/icons/hud/info_64x64.edds"
      mode blend
      "src alpha" 1
-     "no wrap" 1
-     stretch 1
+     "clamp mode" clamp
+     "stretch mode" stretch_w_h
     }
    }
+  }
+  PanelWidgetClass item_element_overlay {
+   visible 0
+   ignorepointer 1
+   color 0.8667 0.149 0.149 0.1961
+   size 1 1
+   hexactpos 0
+   vexactpos 0
+   hexactsize 0
+   vexactsize 0
+   priority 801
+   style UIDefaultPanel
   }
  }
 }

@@ -65,13 +65,13 @@ class eAIZombieTargetInformation: eAIEntityTargetInformation
 			levelFactor = 0.00;
 			break;
 		case DayZInfectedConstants.MINDSTATE_DISTURBED:
-			levelFactor = 0.25;
+			levelFactor = 0.25;  //! Threat level 0.4 at 6.25m
 			break;
 		case DayZInfectedConstants.MINDSTATE_ALERTED:
-			levelFactor = 0.50;
+			levelFactor = 0.60;  //! Threat level 0.4 at 15m
 			break;
 		case DayZInfectedConstants.MINDSTATE_CHASE:
-			levelFactor = 1.0;
+			levelFactor = 1.20;  //! Threat level 0.4 at 30m
 			break;
 		case DayZInfectedConstants.MINDSTATE_FIGHT:
 			levelFactor = 2.00;

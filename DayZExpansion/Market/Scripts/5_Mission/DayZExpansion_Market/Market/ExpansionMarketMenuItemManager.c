@@ -183,7 +183,7 @@ class ExpansionMarketMenuItemManager: ExpansionScriptView
 		
 		foreach (string tempAttachment: tempAttachments)
 		{
-			ExpansionMarketMenuItemManagerCategoryItem attachmentItem = new ExpansionMarketMenuItemManagerCategoryItem(tempAttachment, m_MarketMenu, this);
+			ExpansionMarketMenuItemManagerCategoryItem attachmentItem = new ExpansionMarketMenuItemManagerCategoryItem(tempAttachment, m_MarketMenu);
 			m_MarketItemManagerController.CategoryItems.Insert(attachmentItem);
 		}
 		
@@ -416,13 +416,9 @@ class ExpansionMarketMenuItemManager: ExpansionScriptView
 	
 	void DeleteItemPreset(ExpansionMarketMenuItemManagerPreset preset, string path, ExpansionMarketMenuItemManagerPresetElement element)
 	{
-		Print(ToString() + "::DeleteItemPreset - Preset=" + preset + " | Path=" + path + " | Element=" + element);
-		
 		string file = path + "\\" + preset.PresetName + ".json";
-		Print(ToString() + "::DeleteItemPreset - File=" + file);
 		if (FileExist(file))
 		{
-			Print(ToString() + "::DeleteItemPreset - Delete File=" + file);
 			DeleteFile(file);
 		}
 		else if (path.IndexOf(EXPANSION_MARKET_CLOTHING_PRESETS_FOLDER) == 0)
@@ -433,7 +429,6 @@ class ExpansionMarketMenuItemManager: ExpansionScriptView
 		int elementIndex = m_PresetsDropdownElements.Find(element);
 		if (elementIndex > -1)
 		{
-			Print(ToString() + "::DeleteItemPreset - Delete element! Index=" + elementIndex);
 			m_PresetsDropdownElements.Remove(elementIndex);
 		}
 		

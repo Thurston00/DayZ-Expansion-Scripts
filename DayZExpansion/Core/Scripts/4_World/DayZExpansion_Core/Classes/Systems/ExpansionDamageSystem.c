@@ -66,7 +66,7 @@ class ExpansionDamageSystem
 		return false;
 	}
 
-	static float GetExplosionDamage(EntityAI source, EntityAI target, string ammoType = "")
+	static float GetExplosionDamage(EntityAI source, EntityAI target, string ammoType = "", out float dmgNominal = 0.0)
 	{
 		float explosionRange;
 		float explosionDropoffRange;
@@ -77,8 +77,8 @@ class ExpansionDamageSystem
 
 		if (ammoType)
 		{
-			float dmg = GetGame().ConfigGetFloat("CfgAmmo " + ammoType + " DamageApplied Health damage");
-			return dmg * GetExplosionDamageNormalized(source, target, explosionRange, explosionDropoffRange);
+			dmgNominal = GetGame().ConfigGetFloat("CfgAmmo " + ammoType + " DamageApplied Health damage");
+			return dmgNominal * GetExplosionDamageNormalized(source, target, explosionRange, explosionDropoffRange);
 		}
 
 		return 0.0;
@@ -325,7 +325,15 @@ class ExpansionDamageSystem
 
 	static void OnExplosionHit(EntityAI source, EntityAI target, string ammoType, bool applyDamageCorrection = false, TotalDamageResult damageResult = null, string dmgZone = string.Empty)
 	{
-		DequeueExplosion(target, source.ToString(), ammoType);
+	}
+
+	static bool OnExplosionDamageCalculated(TotalDamageResult damageResult, EntityAI source, EntityAI target, int component, string dmgZone, string ammoType, vector modelPos, float speedCoef, bool applyDamageCorrection = false)
+	{
+		if (!IsEnabledForExplosionTarget(target))
+			return true;
+
+		if (!DequeueExplosion(target, source.ToString(), ammoType))
+			return true;
 
 		if (applyDamageCorrection && !target.IsDamageDestroyed() && !target.GetHierarchyParent() && source && !source.GetHierarchyRootPlayer())
 		{
@@ -333,19 +341,28 @@ class ExpansionDamageSystem
 			//! Note that this only works as intended if damage source root is not a player,
 			//! else won't be able to get actual source's position in relation to target
 
-			if (dmgZone == string.Empty)
-				dmgZone = "GlobalHealth";
-
 			float dmg = damageResult.GetDamage(dmgZone, "Health");
 
-			float baseDmg = GetExplosionDamage(source, target, ammoType);
-			if (baseDmg > dmg)
+			float dmgDirectHit;
+			float baseDmg = GetExplosionDamage(source, target, ammoType, dmgDirectHit) * speedCoef;
+			if (baseDmg > dmg && dmgDirectHit > 0.0)
 			{
-				Log("Overriding " + source.ToString() + " damage dealt to " + target.ToString() + " at " + target.GetPosition() + " " + dmg.ToString() + " -> " + baseDmg.ToString());
+				Log("Overriding " + source.ToString() + " damage dealt to " + target.ToString() + " at " + target.GetPosition() + " " + dmg.ToString() + " -> " + baseDmg.ToString() + " by dealing damage difference");
 
-				target.DecreaseHealth(dmgZone, "Health", baseDmg - dmg);
+				float dmgCoef = (baseDmg - dmg) / dmgDirectHit;
+
+				GetGame().GetCallQueue(CALL_CATEGORY_SYSTEM).Call(ApplyExplosionDamage, source, target, dmgZone, ammoType, modelPos, dmgCoef);
+				return false;
 			}
 		}
+
+		return true;
+	}
+
+	static void ApplyExplosionDamage(EntityAI source, EntityAI target, string dmgZone, string ammoType, vector modelPos, float dmgCoef)
+	{
+		if (source && target)
+			target.ProcessDirectDamage(DamageType.EXPLOSION, source, dmgZone, ammoType, modelPos, dmgCoef);
 	}
 
 	static int GetQueuedExplosionCount(EntityAI target, string sourceIdentifier, string ammoType)
@@ -376,9 +393,11 @@ class ExpansionDamageSystem
 
 	static bool DequeueExplosion(EntityAI target, string sourceIdentifier, string ammoType)
 	{
-		if (GetQueuedExplosionCount(target, sourceIdentifier, ammoType))
+		int count = GetQueuedExplosionCount(target, sourceIdentifier, ammoType);
+
+		if (count)
 		{
-			int count = s_ExplosionQueue[target][sourceIdentifier][ammoType] - 1;
+			count--;
 
 			if (count)
 			{

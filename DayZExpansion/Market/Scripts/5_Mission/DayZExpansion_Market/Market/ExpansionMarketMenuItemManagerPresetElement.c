@@ -84,7 +84,6 @@ class ExpansionMarketMenuItemManagerPresetElement: ExpansionScriptView
 	
 	override bool OnClick(Widget w, int x, int y, int button)
 	{
-		Print(w.GetName());
 		if (w == dropdown_element_clear)
 		{
 			if (m_MarketMenuItemManager.GetMarketMenu().GetSelectedMarketItemElement().GetPreviewObject().IsWeapon())

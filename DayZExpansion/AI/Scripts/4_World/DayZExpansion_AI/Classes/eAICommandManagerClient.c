@@ -275,7 +275,7 @@ class eAICommandManagerClient : eAICommandManager
 		{
 			case eAICommands.DEB_SPAWNALLY:
 				ai = SpawnAI_Helper(player);
-				ai.SetMovementSpeedLimit(speed);
+				ai.eAI_SetSpeedLimitPreference(speed);
 				break;
 			case eAICommands.DEB_SPAWNSENTRY:
 				ai = SpawnAI_Sentry(pos);
@@ -705,7 +705,7 @@ class eAICommandManagerClient : eAICommandManager
 		{
 			if (Class.CastTo(ai, formationLeader))
 			{
-				ai.SetMovementSpeedLimit(speed);
+				ai.eAI_SetSpeedLimitPreference(speed);
 				speed = eAIMovementSpeed.SPRINT;  //! Allow other members to catch up with leader
 			}
 		}
@@ -713,7 +713,7 @@ class eAICommandManagerClient : eAICommandManager
 		for (int i = 0; i < g.Count(); i++)
 		{
 			if (Class.CastTo(ai, g.GetMember(i)) && ai != formationLeader)
-				ai.SetMovementSpeedLimit(speed);
+				ai.eAI_SetSpeedLimitPreference(speed);
 		}
 	}
 

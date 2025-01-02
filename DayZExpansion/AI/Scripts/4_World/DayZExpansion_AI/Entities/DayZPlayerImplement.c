@@ -426,6 +426,10 @@ modded class DayZPlayerImplement
 	{
 	#ifdef DIAG_DEVELOPER
 		EXTrace.PrintHit(EXTrace.AI, this, "EEHitBy[" + m_eAI_DamageHandler.m_HitCounter + "]", damageResult, damageType, source, component, dmgZone, ammo, modelPos, speedCoef);
+
+	#ifdef EXPANSION_AI_DMGDEBUG_CHATTY
+		ExpansionStatic.MessageNearPlayers(GetPosition(), 100.0, "[" + ExpansionStatic.FormatFloat(GetGame().GetTickTime(), 3, false) + "] hit " + ToString() + " " + dmgZone);
+	#endif
 	#endif
 
 		m_eAI_LastHitTime = GetGame().GetTickTime();

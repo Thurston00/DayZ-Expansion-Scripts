@@ -468,7 +468,7 @@ class eAIDynamicPatrol : eAIPatrol
 			{
 				m_Group.Save(true);
 				m_TimeSinceLastSpawn = m_RespawnTime;  //! Allow "respawn" instantly if persistent group wasn't killed
-				m_Position = m_Group.GetLeader().GetPosition();  //! Update spawn position for next spawn
+				m_Position = m_Group.GetFormationLeader().GetPosition();  //! Update spawn position for next spawn
 			}
 
 			m_Group.ClearAI(true, deferDespawnUntilLoosingAggro);
@@ -516,7 +516,7 @@ class eAIDynamicPatrol : eAIPatrol
 		else
 		{
 			vector patrolPos = m_Position;
-			DayZPlayerImplement leader = m_Group.GetLeader();
+			DayZPlayerImplement leader = m_Group.GetFormationLeader();
 			if (leader)
 				patrolPos = leader.GetPosition();
 

@@ -697,7 +697,7 @@ class ExpansionStatic: ExpansionStaticCore
 	static string GetInstanceID(Class instance)
 	{
 		string repr = instance.ToString();
-		int start = repr.IndexOf("<") + 1;
+		int start = repr.LastIndexOf("<") + 1;
 		int len = repr.Length() - start - 1;
 		return repr.Substring(start, len);
 	}
@@ -722,11 +722,28 @@ class ExpansionStatic: ExpansionStaticCore
 		if (!instance)
 			return "null";
 
-		string dbgInfo = string.Format("%1<%2>", instance.GetDebugName(), GetInstanceID(instance));
+		string dbgName = instance.GetDebugName();
+		string dbgInfo;
 
 		Object obj;
 		if (Class.CastTo(obj, instance))
 		{
+			string cls = obj.ClassName();
+			string type = obj.GetType();
+
+			if (type)
+			{
+				//! Check if cls inherits from type (normally, it's the other way around), and if so, override type with cls
+				if (Is(cls, type))
+					type = cls;
+
+				int i = dbgName.IndexOf(":");
+				if (i > -1)
+					dbgName = type + dbgName.Substring(i, dbgName.Length() - i);
+			}
+
+			dbgInfo = string.Format("%1<%2>", dbgName, GetInstanceID(instance));
+
 			if (obj.IsDamageDestroyed())
 				dbgInfo += "[DEAD]";
 
@@ -737,6 +754,10 @@ class ExpansionStatic: ExpansionStaticCore
 			//! Is parent being deleted?
 			if (obj.IsPendingDeletion())
 				dbgInfo += "[PENDING_DELETION]";
+		}
+		else
+		{
+			dbgInfo = string.Format("%1<%2>", dbgName, GetInstanceID(instance));
 		}
 
 		EntityAI entity;
@@ -1147,6 +1168,16 @@ class ExpansionStatic: ExpansionStaticCore
 		}
 
 		return g_Game.IsKindOf(className, parentName);
+	}
+
+	static bool Is(typename type, string parentName)
+	{
+		typename parentType = parentName.ToType();
+
+		if (parentType && type.IsInherited(parentType))
+			return true;
+
+		return g_Game.IsKindOf(type.ToString(), parentName);
 	}
 
 	//! Inheritance check based on rvConfig class name or EnforceScript typename

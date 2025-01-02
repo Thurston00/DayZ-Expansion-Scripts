@@ -689,7 +689,7 @@ class cfgVehicles
 		scope=2;
 		displayName="$STR_EXPANSION_AMMOBOX_46x30";
 		descriptionShort="$STR_EXPANSION_AMMOBOX_46x30_DESC";
-		model="\DayZExpansion\Objects\Weapons\Firearms\SMG\mp7\Ammobox_46x30";
+		model="\DayZExpansion\Objects\Weapons\Firearms\SMG\mp7\Ammobox_46x30.p3d";
 		rotationFlags=17;
 		lootCategory="Ammo";
 		weight=305;

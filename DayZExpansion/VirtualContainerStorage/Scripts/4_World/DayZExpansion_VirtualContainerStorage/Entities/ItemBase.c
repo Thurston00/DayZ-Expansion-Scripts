@@ -13,7 +13,20 @@
 modded class ItemBase
 {
 	bool m_Expansion_HasEntityStorage;
+	bool m_Expansion_DeferredDeleteEntityStorageFiles;
+	bool m_Expansion_DeletingContents;
 	bool m_Expansion_RestoringContents;
+
+	void ItemBase()
+	{
+		if (Expansion_DoesSupportVirtualStorage())
+		{
+			if (GetGame().IsServer() && !m_Expansion_GlobalID)
+				m_Expansion_GlobalID = new ExpansionGlobalID();
+
+			RegisterNetSyncVariableBool("m_Expansion_HasEntityStorage");
+		}
+	}
 
 	override void DeferredInit()
 	{
@@ -22,20 +35,42 @@ modded class ItemBase
 		if (GetGame().IsServer() && GetGame().IsMultiplayer() && m_Expansion_GlobalID)
 		{
 			m_Expansion_HasEntityStorage = Expansion_HasEntityStorage();
-			SetSynchDirty();
 
-			//! Prevent dupes
-			if (m_Expansion_HasEntityStorage && !Expansion_IsEmptyIgnoringLockedSlots())
-				Expansion_DeleteContentsExceptLockedSlots();
+			if (m_Expansion_HasEntityStorage)
+			{
+				//! Prevent dupes
+				if (!Expansion_IsEmptyIgnoringLockedSlots() && ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex()))
+					m_Expansion_HasEntityStorage = false;
+
+				SetSynchDirty();
+			}
 		}
 	}
+
+//! TODO: This is fine but probably overkill and not really needed. Also, if keeping it, it should be implemented more thoroughly
+//! by additionally checking if container is empty if items in cargo of attached items are moved out (OnChildItemRemoved)
+/*
+	override void EECargoOut(EntityAI item)
+	{
+		super.EECargoOut(item);
+
+		Expansion_DeleteEntityStorageFilesIfEmpty();
+	}
+
+	override void EEItemDetached(EntityAI item, string slot_name)
+	{
+		super.EEItemDetached(item, slot_name);
+
+		Expansion_DeleteEntityStorageFilesIfEmpty();
+	}
+*/
 
 	override void EEDelete(EntityAI parent)
 	{
 		if (GetGame().IsServer() && GetGame().IsMultiplayer() && m_Expansion_GlobalID && m_Expansion_GlobalID.m_IsSet)
 		{
 			EntityAI savedEntityToBeDeleted = ExpansionEntityStorageModule.GetSavedEntityToBeDeleted();
-			if (this != savedEntityToBeDeleted && GetHierarchyRoot() != savedEntityToBeDeleted)
+			if (this != savedEntityToBeDeleted && !Expansion_IsContainedIn(savedEntityToBeDeleted))
 			{
 				string name = m_Expansion_GlobalID.IDToHex();
 				if (ExpansionEntityStorageModule.DeleteFiles(name))
@@ -131,6 +166,46 @@ modded class ItemBase
 		return true;
 	}
 
+	override void SetActions()
+	{
+		super.SetActions();
+
+		if (Expansion_DoesSupportVirtualStorage())
+		{
+			AddAction(ExpansionActionStoreContents);
+			AddAction(ExpansionActionRestoreContents);
+		}
+	}
+
+#ifdef EXPANSION_MODSTORAGE
+	override void CF_OnStoreSave(CF_ModStorageMap storage)
+	{
+		if (Expansion_DoesSupportVirtualStorage() && GetGame().IsServer() && !m_Expansion_GlobalID.m_IsSet)
+			m_Expansion_GlobalID.Acquire();
+
+		super.CF_OnStoreSave(storage);
+
+		if (m_Expansion_DeferredDeleteEntityStorageFiles && !ExpansionEntityStorageModule.IsCurrentEntity(this))
+		{
+			array<EntityAI> contents = {};
+			ItemBase item;
+
+			GetInventory().EnumerateInventory(InventoryTraversalType.PREORDER, contents);
+
+			foreach (EntityAI entity: contents)
+			{
+				if (Class.CastTo(item, entity) && !item.m_Expansion_IsStoreSaved)
+					return;  //! Return early if any contents not yet persisted
+			}
+
+			//! All contents have been persisted, we are safe to delete the entity storage file
+			ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex());
+
+			m_Expansion_DeferredDeleteEntityStorageFiles = false;
+		}
+	}
+#endif
+
 	bool Expansion_HasEntityStorage()
 	{
 		if (GetGame().IsClient())
@@ -139,7 +214,18 @@ modded class ItemBase
 		if (!m_Expansion_GlobalID || !m_Expansion_GlobalID.m_IsSet)
 			return false;
 
-		return FileExist(Expansion_GetEntityStorageFileName());
+		if (FileExist(Expansion_GetEntityStorageFileName()) && !m_Expansion_DeferredDeleteEntityStorageFiles)
+			return true;
+
+		return false;
+	}
+
+	bool Expansion_DoesSupportVirtualStorage()
+	{
+		if (IsContainer() || IsItemTent() || (IsFireplace() && IsInherited(BarrelHoles_ColorBase)))
+			return true;
+
+		return false;
 	}
 
 	override bool Expansion_CanUseVirtualStorage(bool restoreOverride = false)
@@ -147,7 +233,10 @@ modded class ItemBase
 		if (restoreOverride)
 			return m_Expansion_HasEntityStorage;
 
-		if (!m_Expansion_GlobalID)
+		if (!Expansion_DoesSupportVirtualStorage())
+			return false;
+
+		if (GetGame().IsServer() && !m_Expansion_GlobalID)
 			return false;
 
 		auto settings = GetExpansionSettings().GetBaseBuilding(false);
@@ -163,6 +252,8 @@ modded class ItemBase
 
 	void Expansion_DeleteContentsExceptLockedSlots()
 	{
+		m_Expansion_DeletingContents = true;
+
 		int i;
 		if (!ExpansionIsOpenable() && !IsNonExpansionOpenable())
 		{
@@ -187,6 +278,18 @@ modded class ItemBase
 				if (item)
 					GetGame().ObjectDelete(item);
 			}
+		}
+
+		m_Expansion_DeletingContents = false;
+	}
+
+	void Expansion_DeleteEntityStorageFilesIfEmpty()
+	{
+		if (!GetGame().IsClient() && !m_Expansion_DeletingContents && Expansion_HasEntityStorage() && Expansion_IsEmptyIgnoringLockedSlots())
+		{
+			EntityAI savedEntityToBeDeleted = ExpansionEntityStorageModule.GetSavedEntityToBeDeleted();
+			if (!ExpansionEntityStorageModule.IsCurrentEntity(this) && !Expansion_IsContainedIn(savedEntityToBeDeleted))
+				ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex());
 		}
 	}
 
@@ -220,8 +323,23 @@ modded class ItemBase
 
 	override bool Expansion_StoreContents()
 	{
-		if (m_Expansion_HasEntityStorage || Expansion_IsEmptyIgnoringLockedSlots())
+		if (m_Expansion_HasEntityStorage)
+		{
+			EXError.Warn(this, GetType() + " " + GetPosition() + " already has entity storage");
 			return false;
+		}
+
+		if (Expansion_IsEmptyIgnoringLockedSlots())
+		{
+			if (Expansion_HasEntityStorage())
+			{
+				EXError.Warn(this, GetType() + " " + GetPosition() + " is empty (ignoring locked slots) - deleting entity storage files");
+
+				ExpansionEntityStorageModule.DeleteFiles(m_Expansion_GlobalID.IDToHex());
+			}
+
+			return false;
+		}
 
 		if (!m_Expansion_GlobalID.m_IsSet)
 			m_Expansion_GlobalID.Acquire();
@@ -235,13 +353,14 @@ modded class ItemBase
 			EXTrace.Print(EXTrace.GENERAL_ITEMS, this, "::Expansion_StoreContents - " + GetPosition() + " - is inventory empty (ignoring locked slots)? " + Expansion_IsEmptyIgnoringLockedSlots());
 
 			m_Expansion_HasEntityStorage = true;
+			m_Expansion_DeferredDeleteEntityStorageFiles = false;
 			SetSynchDirty();
 
 			return true;
 		}
 		else
 		{
-			EXTrace.Print(EXTrace.GENERAL_ITEMS, this, "::Expansion_StoreContents - " + GetPosition() + " - could not save inventory");
+			EXError.Error(this, GetType() + " " + GetPosition() + " - could not save inventory");
 		}
 
 		return false;
@@ -260,12 +379,16 @@ modded class ItemBase
 				SetHealth01("", "", 1.0);
 
 			EntityAI entity = this;
-			bool success = ExpansionEntityStorageModule.RestoreFromFile(Expansion_GetEntityStorageFileName(), entity);
+			//! When storage contents are loaded into the container, keep files
+			//! to avoid data loss in case of server crash before the container was persisted.
+			//! After container was persisted, storage files are deleted in CF_OnStoreSave.
+			bool success = ExpansionEntityStorageModule.RestoreFromFile(Expansion_GetEntityStorageFileName(), entity, null, null, false);
 			if (success)
 			{
 				EXTrace.Print(EXTrace.GENERAL_ITEMS, this, "::Expansion_RestoreContents - " + GetPosition() + " - restored inventory with storage ID " + m_Expansion_GlobalID.IDToHex());
 
 				m_Expansion_HasEntityStorage = false;
+				m_Expansion_DeferredDeleteEntityStorageFiles = true;
 				SetSynchDirty();
 			}
 			else

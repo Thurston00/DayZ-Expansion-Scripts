@@ -419,6 +419,82 @@ class ExpansionMath
 		return interpolatedPath;
 	}
 
+	/**
+	 * @brief given the three points a, b and c forming a triangle, return the circumcenter of the triangle
+	 * 
+	 * @note Y components of the vectors are ignored
+	 */
+	static vector Circumcenter(vector a, vector b, vector c)
+	{
+		float sideAB = b[0] - a[0];
+		float sideBC = c[0] - b[0];
+
+		//! Check if the sides are vertical or horizontal
+		bool sideABVertical = sideAB == 0;
+		bool sideBCVertical = sideBC == 0;
+
+		//! Compute midpoints of two sides
+		float midXab = (a[0] + b[0]) * 0.5;
+		float midYab = (a[2] + b[2]) * 0.5;
+
+		float midXbc = (b[0] + c[0]) * 0.5;
+		float midYbc = (b[2] + c[2]) * 0.5;
+
+		float pbSlope1;
+		float pbSlope2;
+
+		float cAB;
+		float cBC;
+
+		if (sideABVertical)
+		{
+			//! Special handling for vertical side (slope = undefined)
+			pbSlope1 = 0;  //! Perpendicular bisector is horizontal
+			cAB = midYab;  //! Line is y = cAB
+		}
+		else
+		{
+			float slope1 = (b[2] - a[2]) / sideAB;  //! Regular slope
+			pbSlope1 = -1 / slope1;  //! Negative reciprocal for perpendicular slope
+			cAB = midYab - pbSlope1 * midXab;
+		}
+
+		if (sideBCVertical)
+		{
+			//! Special handling for vertical side (slope = undefined)
+			pbSlope2 = 0;  //! Perpendicular bisector is horizontal
+			cBC = midYbc;  //! Line is y = cBC
+		}
+		else
+		{
+			float slope2 = (c[2] - b[2]) / sideBC;  //! Regular slope
+			pbSlope2 = -1 / slope2;  //! Negative reciprocal for perpendicular slope
+			cBC = midYbc - pbSlope2 * midXbc;
+		}
+
+		vector circumcenter;
+
+		//! Solve intersection of two perpendicular bisectors
+		if (sideABVertical)
+		{
+			circumcenter[0] = midXab;
+			circumcenter[2] = pbSlope2 * circumcenter[0] + cBC;
+		}
+		else if (sideBCVertical)
+		{
+			circumcenter[0] = midXbc;
+			circumcenter[2] = pbSlope1 * circumcenter[0] + cAB;
+		}
+		else
+		{
+			//! General case
+			circumcenter[0] = (cBC - cAB) / (pbSlope1 - pbSlope2);
+			circumcenter[2] = pbSlope1 * circumcenter[0] + cAB;
+		}
+
+		return circumcenter;
+	}
+
 	//! @brief Compares two numbers
 	//! Returns 1 if a > b, zero if a == b and -1 if a < b
 	//! This function can be used to work-around broken integer comparison involving negative numbers in EnForce
@@ -651,6 +727,110 @@ class ExpansionMath
 		}
 
 		return Math.Sqrt(minDistanceSq);
+	}
+
+	/**
+	 * @brief Find closest point outside cylinder that intersects the path defined by points start and end
+	 * 
+	 * @param start
+	 * @param [inout] end  will be altered in-place if path intersects cylinder
+	 * @param perpendicularDistance  positive = left, negative = right
+	 * 
+	 * @return true if path intersects cylinder, else false
+	 */
+	static bool FindClosestPointOutsideCylinder(vector start, inout vector end, vector center, float radius, float height, float perpendicularDistance = 15.0)
+	{
+		if (ExpansionMath.IsPointInCylinder(center, radius, height, start) || Math3D.IntersectRayCylinder(start, end, center, radius, height))
+		{
+			end = GetClosestPointOutsideRadius(start, end, center, radius, perpendicularDistance);
+
+			return true;
+		}
+
+		return false;
+	}
+
+	static vector GetClosestPointOutsideRadius(vector start, vector end, vector center, float radius, float perpendicularDistance = 15.0)
+	{
+		start[1] = end[1];
+		center[1] = end[1];
+		return GetClosestPointOutsideSphere(start, end, center, radius, perpendicularDistance);
+	}
+
+	static vector GetClosestPointOutsideSphere(vector start, vector end, vector center, float radius, float perpendicularDistance = 15.0)
+	{
+		//! Calculate a perpendicular direction to avoid the sphere
+		vector toCenter = center - start;
+		toCenter.Normalize();
+		//vector avoidanceDirectionLeft = toCenter.Perpend();
+		//vector avoidanceDirectionRight = toCenter * -1.0;
+		vector avoidanceDirection = toCenter.Perpend() * perpendicularDistance;
+
+		//! Adjust the endpoint away from the edge
+		vector outside = center - toCenter * radius;
+		//float distToEndLeftSq = vector.DistanceSq(outside + avoidanceDirectionLeft, end);
+		//float distToEndRightSq = vector.DistanceSq(outside + avoidanceDirectionRight, end);
+		//vector avoidanceDirection;
+		//if (distToEndLeftSq < distToEndRightSq)
+			//avoidanceDirection = avoidanceDirectionLeft;
+		//else
+			//avoidanceDirection = avoidanceDirectionRight;
+
+		return outside + avoidanceDirection;
+	}
+
+	/**
+	 * @brief check whether point is inside cylinder
+	 * 
+	 * @note center Y must be bottom of cylinder!
+	 */
+	static bool IsPointInCylinder(vector center, float radius, float height, vector point)
+	{
+		if (point[1] < center[1] || point[1] > center[1] + height)
+			return false;
+
+		return Math.IsPointInCircle(center, radius, point);
+	}
+
+	/**
+	 * @brief Returns if line intersects circle
+	 * 
+	 * @param lineStart ([0] and [2] will be used, as a circle is 2D)
+	 * @param lineEnd ([0] and [2] will be used, as a circle is 2D)
+	 * @param center of circle ([0] and [2] will be used, as a circle is 2D)
+	 * @param radius of circle
+	 *
+	 * @return true when line intersects circle
+	*/
+	static bool IntersectLineCircle(vector lineStart, vector lineEnd, vector center, float radius)
+	{
+		float dx = lineEnd[0] - lineStart[0];
+		float dy = lineEnd[2] - lineStart[2];
+
+		float fx = lineStart[0] - center[0];
+		float fy = lineStart[2] - center[2];
+
+		//! Quadratic coefficients
+		float a = dx * dx + dy * dy;
+		float b = 2 * (fx * dx + fy * dy);
+		float c = (fx * fx + fy * fy) - radius * radius;
+
+		float discriminant = b * b - 4 * a * c;
+
+		if (discriminant >= 0)
+		{
+			//! Check if intersection points are within the line segment
+			discriminant = Math.Sqrt(discriminant);
+			float t1 = (-b - discriminant) / (2 * a);
+			float t2 = (-b + discriminant) / (2 * a);
+
+			//! Check if either t1 or t2 is within [0, 1]
+			if ((t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1))
+				return true;
+		}
+
+		//! No intersection
+		return false;
 	}
 
 	static float LookUp(float value, int num, float inVals[], float outVals[])

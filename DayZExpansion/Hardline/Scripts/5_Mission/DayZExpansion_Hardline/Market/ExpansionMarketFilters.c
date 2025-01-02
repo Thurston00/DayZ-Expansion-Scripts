@@ -28,8 +28,7 @@ modded class ExpansionMarketFilters
 			{
 				PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
 				ExpansionHardlineItemRarity rarity = settings.GetItemRarityByType(attachments[i]);
-				int required;
-				if (rarity && !m_MarketModule.HasRepForRarity(player, rarity, required))
+				if (rarity && !m_MarketModule.HasRepForRarity(player, rarity))
 					attachments.Remove(i);
 			}
 		}

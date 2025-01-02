@@ -170,7 +170,7 @@ class cfgMagazines
 		scope=2;
 		displayName="$STR_EXPANSION_AMMO_ARROWBOLT";
 		descriptionShort="$STR_EXPANSION_AMMO_ARROWBOLT_DESC";
-		model="\dz\weapons\projectiles\arrow_hunting.p3d";
+		model="\dz\weapons\projectiles\bolt_biggame.p3d";
 		rotationFlags=34;
 		weight=24;
 		itemSize[]={2,1};
@@ -245,9 +245,9 @@ class CfgAmmo
 	class Expansion_Arrow_Bolt: Bullet_Base
 	{
 		scope=2;
-		model="\dz\weapons\projectiles\arrow_hunting_flying.p3d";
+		model="\dz\weapons\projectiles\bolt_flying.p3d";
 		spawnPileType="AmmoExpansion_ArrowBolt";
-		proxyShape="\dz\weapons\projectiles\arrow_hunting.p3d";
+		proxyShape="\dz\weapons\projectiles\bolt_biggame.p3d";
 		hit=12;
 		indirectHit=0;
 		indirectHitRange=0;
@@ -294,6 +294,6 @@ class CfgVehicles
 	class FxRound;
 	class FxRound_Expansion_arrow_bolt: FxRound
 	{
-		model="\dz\weapons\projectiles\arrow_hunting.p3d";
+		model="\dz\weapons\projectiles\bolt_biggame.p3d";
 	};
 };

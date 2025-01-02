@@ -48,7 +48,11 @@ class ExpansionClientSettingsModule : CF_ModuleWorld
 	{
 		super.OnSettingsChanged(sender, args);
 
-		MissionBaseWorld.Cast(GetGame().GetMission()).Expansion_UpdateWorldViewDistances();
+		MissionBaseWorld missionWorld = MissionBaseWorld.Cast(GetGame().GetMission());
+		if (missionWorld)
+		{
+			missionWorld.Expansion_UpdateWorldViewDistances();
+		}
 	}
 #endif
 };

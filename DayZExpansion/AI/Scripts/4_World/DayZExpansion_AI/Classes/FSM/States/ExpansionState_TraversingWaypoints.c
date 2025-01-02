@@ -5,15 +5,12 @@ class ExpansionState_TraversingWaypoints: eAIState
 	float previousDistance;
 	vector waypoint;
 	vector previousWaypoint;
-	int speedLimit;
 	bool gotUp;
 
 	override void OnEntry(string Event, ExpansionState From)
 	{
 		gotUp = false;
 		unit.eAI_LeaveCover();
-		
-		speedLimit = unit.GetMovementSpeedLimit();
 		
 		eAIWaypointBehavior behaviour = unit.GetGroup().GetWaypointBehaviour();
 		if (behaviour == eAIWaypointBehavior.ROAMING && waypoint == vector.Zero)
@@ -24,8 +21,7 @@ class ExpansionState_TraversingWaypoints: eAIState
 
 	override void OnExit(string Event, bool Aborted, ExpansionState To)
 	{
-		if (speedLimit > 0)
-			unit.SetMovementSpeedLimit(speedLimit);  //! Restore speed limit
+		unit.SetMovementSpeedLimit(unit.m_eAI_SpeedLimitPreference);  //! Restore speed limit
 	}
 
 	override int OnUpdate(float DeltaTime, int SimulationPrecision)
@@ -60,15 +56,14 @@ class ExpansionState_TraversingWaypoints: eAIState
 			gotUp = true;
 		}
 		
-		if (speedLimit > 0)
-			unit.eAI_SetBestSpeedLimit(speedLimit);
+		unit.eAI_SetBestSpeedLimit(unit.m_eAI_SpeedLimitPreference);
 		
 		vector targetPosition;
 		auto pathFinding = unit.GetPathFinding();
 		if (pathFinding.m_TargetPosition == waypoint && !pathFinding.m_Recalculate)
 		{
 			//! If we only have two or less points total, we can be sure that endpoint is reachable and closest to target as possible
-			if (pathFinding.m_Count <= 2)
+			if (pathFinding.m_Count <= 2 && unit.GetCurrentWaterLevel() < -0.5)
 				targetPosition = pathFinding.GetEnd();
 			else
 				targetPosition = pathFinding.GetTarget();

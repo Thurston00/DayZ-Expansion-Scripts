@@ -730,6 +730,12 @@ modded class ItemBase
 			}
 		}
 
+		if (damageType == DT_EXPLOSION)
+		{
+			if (!ExpansionDamageSystem.OnExplosionDamageCalculated(damageResult, source, this, component, dmgZone, ammo, modelPos, speedCoef, false))
+				return false;
+		}
+
 		m_Expansion_HealthBeforeHit[dmgZone] = GetHealth(dmgZone, "Health");
 
 		return true;
@@ -1039,6 +1045,44 @@ modded class ItemBase
 		}
 
 		return rootItem;
+	}
+
+	/**
+	 * @brief return the root of the hierarchy that is not a player
+	 * 
+	 * I.e. if this item is a scope attached to a gun on a player's shoulder, return the gun,
+	 * but if the item is a scope attached to a gun inside a vehicle, return the vehicle.
+	 */
+	EntityAI Expansion_GetHierarchyRootExcludingPlayer()
+	{
+		EntityAI root = this;
+		EntityAI parent = GetHierarchyParent();
+
+		while (parent && !parent.IsMan())
+		{
+			root = parent;
+			parent = parent.GetHierarchyParent();
+		}
+
+		return root;
+	}
+
+	/**
+	 * @brief checks whether this item is contained in other or any of it's children
+	 */
+	bool Expansion_IsContainedIn(EntityAI other)
+	{
+		EntityAI parent = GetHierarchyParent();
+
+		while (parent)
+		{
+			if (parent == other)
+				return true;
+
+			parent = parent.GetHierarchyParent();
+		}
+
+		return false;
 	}
 
 	typename Expansion_GetFamilyType()

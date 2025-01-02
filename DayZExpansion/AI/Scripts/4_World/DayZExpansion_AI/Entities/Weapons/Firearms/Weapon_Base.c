@@ -20,10 +20,10 @@ modded class Weapon_Base
 
 	bool Hitscan(vector begin_point, vector direction, eAIBase ai, out Object hitObject, out vector hitPosition, out vector hitNormal, out int contactComponent)
 	{
-		return Hitscan(begin_point, direction, 1100.0, ai, hitObject, hitPosition, hitNormal, contactComponent);
+		return Hitscan(begin_point, direction, 1100.0, ai, this, hitObject, hitPosition, hitNormal, contactComponent);
 	}
 
-	bool Hitscan(vector begin_point, vector direction, float distance, Object ignore, out Object hitObject, out vector hitPosition, out vector hitNormal, out int contactComponent)
+	bool Hitscan(vector begin_point, vector direction, float distance, eAIBase ai, Object ignore, out Object hitObject, out vector hitPosition, out vector hitNormal, out int contactComponent)
 	{
 		#ifdef EAI_TRACE
 		auto trace = CF_Trace_0(this, "Hitscan");
@@ -32,7 +32,7 @@ modded class Weapon_Base
 		vector end_point = begin_point + direction * distance;
 
 		set<Object> results = new set<Object>();
-		bool hit = DayZPhysics.RaycastRV(begin_point, end_point, hitPosition, hitNormal, contactComponent, results, this, ignore, false, false, ObjIntersectFire, 0.01);
+		bool hit = DayZPhysics.RaycastRV(begin_point, end_point, hitPosition, hitNormal, contactComponent, results, ai, ignore, false, false, ObjIntersectFire, 0.01);
 		
 		if (hit)
 		{
@@ -64,7 +64,7 @@ modded class Weapon_Base
 
 		ai.m_eAI_LastEngagedTargetType = type;
 
-		Object ignore = ai;
+		Object ignore = this;
 		Object hitObject;
 		vector hitPosition;
 		vector hitNormal;
@@ -81,7 +81,7 @@ modded class Weapon_Base
 
 		for (int i = 0; i < 3; i++)
 		{
-			hit = Hitscan(begPos, dir, distance, ignore, hitObject, hitPosition, hitNormal, contactComponent);
+			hit = Hitscan(begPos, dir, distance, ai, ignore, hitObject, hitPosition, hitNormal, contactComponent);
 
 			if (hitObject && hitObject != targetEntity)
 			{
@@ -110,14 +110,14 @@ modded class Weapon_Base
 
 		if (hitObject)
 		{
-			shot = new eAIShot(this, muzzleIndex, pos, ai.GetAimingProfile().GetAimDirection(), hitObject, hitPosition, contactComponent);
+			shot = new eAIShot(this, muzzleIndex, pos, dir, hitObject, hitPosition, contactComponent);
 			ai.m_eAI_FiredShots.Insert(shot);
 		}
 		else
 		{
 			//! We didn't hit a valid target, but we still want to correct for bullet drop.
 			//! Just set hit position to aim position as we only use it for drop calc.
-			shot = new eAIShot(this, muzzleIndex, pos, ai.GetAimingProfile().GetAimDirection(), null, ai.GetAimPosition(), contactComponent);
+			shot = new eAIShot(this, muzzleIndex, pos, dir, null, ai.GetAimPosition(), contactComponent);
 		}
 
 	#ifdef DIAG_DEVELOPER
@@ -128,16 +128,16 @@ modded class Weapon_Base
 
 		//! Compensate for bullet drop
 		float drop = eAI_CalculateProjectileDrop(shot.m_TravelTime);
-		if (drop > 0.0)
+		if (drop > 0.1)
 		{
-			vector projecedPosition = pos + dir * shot.m_Distance;
-			projecedPosition[1] = projecedPosition[1] + drop * 0.9;
-			dir = vector.Direction(pos, projecedPosition).Normalized();
+			vector projectedPosition = pos + dir * shot.m_Distance;
+			projectedPosition[1] = projectedPosition[1] + drop * 0.8;
+			dir = vector.Direction(pos, projectedPosition).Normalized();
 		}
 
 		pos = pos + dir * 0.2;
 
-		return Fire(muzzleIndex, pos, dir, vector.Forward);
+		return Fire(muzzleIndex, pos, dir, dir);
 	#else
 		return TryFireWeapon(this, muzzleIndex);
 	#endif

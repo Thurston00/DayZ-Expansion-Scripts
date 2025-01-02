@@ -962,7 +962,7 @@ class ExpansionKillFeedModule: CF_ModuleWorld
 			string name = displayName;
 		#ifdef EXPANSIONMODAI
 			eAIBase ai;
-			if (name == m_Expansion_SurvivorDisplayName && Class.CastTo(ai, player))
+			if (Class.CastTo(ai, player) && (name == m_Expansion_SurvivorDisplayName || name == string.Empty))
 			{
 				name = player.GetType();
 				int index = ExpansionString.LastIndexOf(name, "_");

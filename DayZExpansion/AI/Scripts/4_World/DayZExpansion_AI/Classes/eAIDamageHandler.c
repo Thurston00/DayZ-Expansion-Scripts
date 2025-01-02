@@ -121,9 +121,6 @@ class eAIDamageHandler
 			if (dmgZone)
 				EXTrace.Print(EXTrace.AI, m_Entity, dmgZone + " health: " + m_Entity.GetHealth(dmgZone, "Health"));
 
-			if (dmg * transferToGlobalCoef >= Math.Floor(m_Entity.GetHealth("", "Health")))
-				return 0.01;
-
 			if (m_Entity.IsMan())
 			{
 				if (dmgZone == "Head")
@@ -140,6 +137,9 @@ class eAIDamageHandler
 				if (Math.Floor(m_Entity.GetHealth("", "Blood")) - damageResult.GetDamage(dmgZone, "Blood") <= 2600)
 					return 0.01;
 			}
+
+			if (dmg * transferToGlobalCoef >= Math.Floor(m_Entity.GetHealth("", "Health")))
+				return 0.01;
 		}
 
 		return 1.0;
@@ -180,12 +180,18 @@ class eAIDamageHandler
 				if (damageType == DT_FIRE_ARM)
 				{
 					//! Validate each shot.
-					//! Work-around for 1st shot on new entity hitting previously hit entity due to vanilla bug with Weapon::Fire
+					//! Work-around for 1st shot on new entity hitting previously hit entity due to vanilla bug with Weapon::Fire (T186177)
+					//! The actual underlying issue is that the damage of each shot is only applied after the next shot has been fired.
+					//! This can be tested by firing shots from a gun with a long reload time (e.g. a bolt-action rifle),
+					//! or simply waiting between shots, and firing over a longer distance (several hundred meters) to ensure the projectile
+					//! is in flight for a certain amount of time.
+					//! The damage of the previous shot will be applied right at the moment the next shot is fired.
+
 					//! Only redirect for root entity, children will be dealt with by parent dmg handler
 
 					float time = GetGame().GetTickTime();
 
-					bool isValid;
+					eAIShot match;
 
 					array<ref eAIShot> candidates = {};
 
@@ -217,7 +223,7 @@ class eAIDamageHandler
 
 								if (time - shot.m_ProcessedTime < 0.005)
 								{
-									isValid = true;
+									match = shot;
 									break;
 								}
 							}
@@ -230,7 +236,7 @@ class eAIDamageHandler
 						}
 					}
 
-					if (!isValid)
+					if (!match)
 					{
 						foreach (eAIShot candidate: candidates)
 						{
@@ -260,11 +266,20 @@ class eAIDamageHandler
 							DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
 
 							EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " and no candidates, ignoring dmg");
+						#ifdef EXPANSION_AI_DMGDEBUG_CHATTY
+							ExpansionStatic.MessageNearPlayers(modelPos, 100.0, "[" + ExpansionStatic.FormatFloat(time, 3, false) + "] ignore " + m_Entity + " " + dmgZone);
+						#endif
 						}
 					#endif
 
 						return false;
 					}
+
+				#ifdef EXPANSION_AI_DMGDEBUG_CHATTY
+					DayZPlayerImplement p;
+					if (m_Entity == rootEntity || (Class.CastTo(p, rootEntity) && p.m_eAI_DamageHandler.m_ProcessDamage))
+						ExpansionStatic.MessageNearPlayers(match.m_HitPosition, 100.0, "[" + ExpansionStatic.FormatFloat(match.m_Time, 3, false) + "] dmgcalc " + m_Entity + " " + dmgZone + " travel " + ExpansionStatic.FormatFloat(match.m_TravelTime, 4, false) + " actual " + ExpansionStatic.FormatFloat(time - match.m_Time, 4, false));
+				#endif
 				}
 
 			#ifdef DIAG_DEVELOPER
@@ -479,6 +494,10 @@ class eAIDamageHandler
 			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
 
 			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " dist " + dir.Length() + ", redirecting dmg to " + ExpansionStatic.GetDebugInfo(match.m_HitObjectRoot) + " dist " + hitEntityDir.Length() + " speedCoef=" + match.m_SpeedCoef + " travelTime=" + match.m_TravelTime + " remaining=" + travelTimeRemaining + " " + dmgZone + " damageCoef=" + match.m_DamageCoef);
+
+		#ifdef EXPANSION_AI_DMGDEBUG_CHATTY
+			ExpansionStatic.MessageNearPlayers(match.m_HitPosition, 100.0, "[" + ExpansionStatic.FormatFloat(match.m_Time, 3, false) + "] redirect " + match.m_HitObjectRoot + " travel " + ExpansionStatic.FormatFloat(match.m_TravelTime, 4, false));
+		#endif
 		#endif
 
 			match.m_HitObjectRoot.ProcessDirectDamage(DT_FIRE_ARM, match.m_Weapon, dmgZone, match.m_Ammo, match.m_HitPosition, match.m_DamageCoef);
@@ -488,6 +507,8 @@ class eAIDamageHandler
 	#ifdef DIAG_DEVELOPER
 		else
 		{
+			ai.m_eAI_FiredShots.RemoveItem(candidate);
+
 			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = DayZPlayerImplement.s_eAI_DebugDamage;
 
 			ai.Expansion_DebugObject(-5, modelPos - "0 1.5 0", "ExpansionDebugNoticeMe_Blue", Vector(dir[0], 0, dir[2]));
@@ -496,6 +517,10 @@ class eAIDamageHandler
 			DayZPlayerImplement.s_Expansion_DebugObjects_Enabled = dbgObjEnabled;
 
 			EXTrace.Print(EXTrace.AI, ai, "Wrong entity hit " + ExpansionStatic.GetHierarchyInfo(m_Entity) + " and candidate wasn't hit, ignoring dmg");
+
+		#ifdef EXPANSION_AI_DMGDEBUG_CHATTY
+			ExpansionStatic.MessageNearPlayers(candidate.m_HitPosition, 100.0, "[" + ExpansionStatic.FormatFloat(candidate.m_Time, 3, false) + "] miss " + candidate.m_HitObjectRoot + " travel " + ExpansionStatic.FormatFloat(candidate.m_TravelTime, 4, false) + " elapsed " + ExpansionStatic.FormatFloat(GetGame().GetTickTime() - candidate.m_Time, 4, false));
+		#endif
 		}
 	#endif
 

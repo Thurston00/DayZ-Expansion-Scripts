@@ -21,6 +21,14 @@ class eAIDoorTargetInformation: eAIEntityTargetInformation
 		return m_Position;
 	}
 
+	override bool IsActive()
+	{
+		if (!super.IsActive())
+			return false;
+
+		return m_Building.GetAllowDamage();
+	}
+
 	override float CalculateThreat(eAIBase ai = null)
 	{
 		if (!m_Building.IsDoorLocked(m_DoorIndex))

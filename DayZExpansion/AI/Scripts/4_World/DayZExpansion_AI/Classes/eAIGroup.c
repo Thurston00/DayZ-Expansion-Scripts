@@ -49,6 +49,7 @@ class eAIGroup
 
 	bool m_UpdateSearchPosition;
 	protected bool m_IsInCombat;
+	bool m_DangerousAreaAvoidanceDirection;
 
 	// return the group owned by leader, otherwise create a new one.
 	static eAIGroup GetGroupByLeader(DayZPlayerImplement leader, bool createIfNoneExists = true, eAIFaction faction = null, bool autoDeleteFormerGroupIfEmpty = true)
@@ -370,18 +371,12 @@ class eAIGroup
 		}
 		else
 		{
-			if (m_RoamingLocations.Count() < 2)
-				ExpansionArray<ExpansionLocatorArray>.RefCopy(ExpansionWorld.Cast(GetDayZGame().GetExpansionGame()).GetAIRoamingLocations(), m_RoamingLocations);
-
-			if (m_RoamingLocations.Count() == 0)
-				return vector.Zero;
-
 			map<int, ref ExpansionLocatorArray> locationsByDistance = new map<int, ref ExpansionLocatorArray>;
 
 			foreach (ExpansionLocatorArray location: m_RoamingLocations)
 			{
-				if (settings.ExcludedRoamingLocations.Find(location.classname) > -1)
-					continue;
+				if (location.position == vector.Zero)
+					continue;  //! excluded
 
 				//! @note we shave off a zero by taking the 10% value to make it less likely to run into 32-bit integer limits
 				distSq = vector.DistanceSq(position, location.position) * 0.1;
@@ -395,6 +390,9 @@ class eAIGroup
 				distances.Insert(distKey);
 				locationsByDistance[distKey] = location;
 			}
+
+			if (distances.Count() < 2)
+				ExpansionArray<ExpansionLocatorArray>.RefCopy(ExpansionWorld.Cast(GetDayZGame().GetExpansionGame()).GetAIRoamingLocations(), m_RoamingLocations);
 
 			for (int i = m_VisitedCrashSites.Count() - 1; i >= 0; i--)
 			{
@@ -420,6 +418,9 @@ class eAIGroup
 				distances.Insert(distKey);
 				locationsByDistance[distKey] = new ExpansionLocatorArray(crash.GetPosition(), crash.GetType(), "", "StaticHeliCrash", crash);
 			}
+
+			if (distances.Count() == 0)
+				return GetFormationLeader().GetPosition();
 
 			distances.Sort();
 
@@ -451,6 +452,8 @@ class eAIGroup
 
 		#ifdef DIAG_DEVELOPER
 			destinationName = destination.classname;
+			if (destination.name)
+				destinationName += " (" + destination.name + ")";
 		#endif
 		}
 
@@ -1135,7 +1138,7 @@ class eAIGroup
 		{
 			serializer.Write(VERSION);
 
-			DayZPlayerImplement leader = GetLeader();
+			DayZPlayerImplement leader = GetFormationLeader();
 			if (leader)
 				serializer.Write(leader.GetPosition());
 			else
@@ -1285,7 +1288,9 @@ class eAIGroup
 
 				foreach (int locIdx: locIndices)
 				{
-					group.m_RoamingLocations.Insert(locations[locIdx]);
+					ExpansionLocatorArray location = locations[locIdx];
+					if (location)
+						group.m_RoamingLocations.Insert(location);
 				}
 			}
 
@@ -1337,5 +1342,13 @@ class eAIGroup
 	{
 		string path = eAIGroup.GetStorageDirectory(m_BaseName);
 		ExpansionStatic.DeleteDirectoryStructureRecursive(path, ".bin");
+	}
+
+	void RandomizeDangerousAreaAvoidanceDirection()
+	{
+		if (Math.RandomInt(0, 2))
+			m_DangerousAreaAvoidanceDirection = 1.0;
+		else
+			m_DangerousAreaAvoidanceDirection = -1.0;
 	}
 };

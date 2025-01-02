@@ -14,13 +14,6 @@ modded class Container_Base
 {
 	int m_Expansion_EntityStorageID = -1;  //! Legacy, was only on Expansion Experimental
 
-	void Container_Base()
-	{
-		if (!m_Expansion_GlobalID)
-			m_Expansion_GlobalID = new ExpansionGlobalID();
-		RegisterNetSyncVariableBool("m_Expansion_HasEntityStorage");
-	}
-
 	#ifdef SERVER
 	override void DeferredInit()
 	{
@@ -40,16 +33,7 @@ modded class Container_Base
 	#endif
 
 	#ifdef EXPANSION_MODSTORAGE
-	override void CF_OnStoreSave(CF_ModStorageMap storage)
-	{
-		#ifdef SERVER
-		if (!m_Expansion_GlobalID.m_IsSet)
-			m_Expansion_GlobalID.Acquire();
-		#endif
-
-		super.CF_OnStoreSave(storage);
-	}
-	
+	//! Legacy, handled by ItemBase since BaseBuilding storage version 52
 	override bool CF_OnStoreLoad(CF_ModStorageMap storage)
 	{
 		if (!super.CF_OnStoreLoad(storage))
@@ -77,14 +61,6 @@ modded class Container_Base
 		return true;
 	}
 	#endif
-
-	override void SetActions()
-	{
-		super.SetActions();
-
-		AddAction(ExpansionActionStoreContents);
-		AddAction(ExpansionActionRestoreContents);
-	}
 
 	override void Open()
 	{

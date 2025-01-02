@@ -1,3 +1,73 @@
+modded class SwapOldAndNewMagazine
+{
+	override void OnEntry (WeaponEventBase e)
+	{
+		eAIBase p;
+		if (e && Class.CastTo(p, e.m_player))
+		{
+			super.eAI_Vanilla_OnEntry(e);  //! WeaponStateBase::eAI_Vanilla_OnEntry
+
+			if (!m_newMagazine || !m_newDst || !m_newDst.IsValid())
+			{
+				Error("[wpnfsm] " + Object.GetDebugName(m_weapon) + " SwapOldAndNewMagazine, error - m_newMagazine(" + m_newMagazine + ") or destination(" + InventoryLocation.DumpToStringNullSafe(m_newDst) + ") is not set ");
+			}
+			else
+			{
+				e.m_player.GetInventory().ClearInventoryReservationEx( m_newMagazine , m_newDst );
+				m_weapon.ShowMagazine();
+				InventoryLocation lhand = new InventoryLocation();
+				lhand.SetAttachment(e.m_player, m_newMagazine, InventorySlots.LEFTHAND);
+			
+				if (GameInventory.LocationSyncMoveEntity(lhand, m_newDst))
+				{
+					if (LogManager.IsWeaponLogEnable()) { wpnDebugPrint("[wpnfsm] " + Object.GetDebugName(m_weapon) + " SwapOldAndNewMagazine, ok - new magazine removed from inv (LHand->Att)"); }
+				}
+				else
+				{
+					InventoryLocation il = new InventoryLocation();
+					m_newMagazine.GetInventory().GetCurrentInventoryLocation(il);
+
+					Error("[wpnfsm] " + Object.GetDebugName(m_weapon) + " SwapOldAndNewMagazine, error - cannot remove new mag from LHand and move " + ExpansionStatic.GetHierarchyInfo(m_newMagazine) + " from " + ExpansionStatic.DumpToString(il) + " to " + ExpansionStatic.DumpToString(m_newDst));
+
+					il.Reset();
+
+					bool keepUnlootable;
+
+					//! @note cloning doesn't really help but cloning to ground at least allows the AI to pick another interactable/target
+					//! than the mag (unlike cloning to inventory). Always clone mag to ground for now.
+					////! Try to clone to cargo, if no free loc, clone to ground
+					//if (!e.m_player.GetInventory().FindFreeLocationFor(m_newMagazine, FindInventoryLocationType.CARGO, il))
+					//{
+						vector m4[4];
+						Math3D.MatrixIdentity4(m4);
+						
+						//! We don't care if a valid transform couldn't be found, we just want to preferably use it instead of placing on the player
+						GameInventory.PrepareDropEntityPos(e.m_player, m_newMagazine, m4, false, GameConstants.INVENTORY_ENTITY_DROP_OVERLAP_DEPTH);
+						il.SetGround(m_newMagazine, m4);
+
+						keepUnlootable = true;
+
+						EXPrint(this, "Cloning to ground " + ExpansionStatic.DumpToString(il));
+					//}
+					//else
+					//{
+						//EXPrint(this, "Cloning to cargo " + ExpansionStatic.DumpToString(il));
+					//}
+
+					if (ExpansionItemSpawnHelper.Clone(m_newMagazine, true, il, keepUnlootable) == null)
+						Error("Cloning failed " + ExpansionStatic.GetDebugInfo(m_newMagazine) + " " + ExpansionStatic.DumpToString(il));
+
+					GetGame().ObjectDelete(m_newMagazine);  //! Whether cloning succeeded or not, always delete the offending mag to break out of the event (else it will repeat over and over...)
+				}
+			}
+
+			return;
+		}
+
+		super.OnEntry(e);
+	}
+}
+
 modded class AttachNewMagazine
 {
 	override void OnEntry (WeaponEventBase e)

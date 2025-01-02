@@ -697,6 +697,9 @@
 				if (unit.IsUnconscious()) return FAIL;
 				if (unit.IsSwimming()) return FAIL;
 				
+				if (unit.eAI_IsChangingStance())
+					return FAIL;
+				
 				ItemBase hands = unit.GetItemInHands();
 				
 				//! If ruined, drop
@@ -781,8 +784,11 @@
 						item = unit.eAI_GetWeaponToUse(true, preferExplosiveAmmo);
 						if (item)
 						{
-							if (item == hands || item.Expansion_GetHierarchyRootItem() == hands || unit.eAI_WeaponSelection(hands, item))
-								return FAIL;
+							if (hands)
+							{
+								if (item == hands || item.Expansion_GetHierarchyRootItem() == hands || !unit.eAI_WeaponSelection(hands, item))
+									return FAIL;
+							}
 							
 							dst.item = item;
 							EXTrace.Print(EXTrace.AI, unit, "Taking " + item + " to hands because not prefering melee or target and weapon to use is not current hand item or better than " + hands);
@@ -800,7 +806,7 @@
 						}
 					}
 					
-					if (!preferExplosiveAmmo)
+					if (!preferTargetItem &amp;&amp; !preferExplosiveAmmo)
 					{
 						item = unit.eAI_GetWeaponToUse(true, false);
 						
@@ -812,8 +818,11 @@
 					
 					if (item)
 					{
-						if (item == hands || item.Expansion_GetHierarchyRootItem() == hands || unit.eAI_WeaponSelection(hands, item))
-							return FAIL;
+						if (hands)
+						{
+							if (item == hands || item.Expansion_GetHierarchyRootItem() == hands || !unit.eAI_WeaponSelection(hands, item))
+								return FAIL;
+						}
 						
 						dst.item = item;
 						EXTrace.Print(EXTrace.AI, unit, "Taking " + item + " to hands because not prefering melee and weapon to use is not current hand item or better than " + hands);
@@ -830,8 +839,11 @@
 				item = unit.GetMeleeWeaponToUse();
 				if (item)
 				{
-					if (item == hands || item.Expansion_GetHierarchyRootItem() == hands)
-						return FAIL;
+					if (hands)
+					{
+						if (item == hands || item.Expansion_GetHierarchyRootItem() == hands)
+							return FAIL;
+					}
 					
 					dst.item = item;
 					return SUCCESS;
@@ -866,6 +878,9 @@
 				if (unit.IsRestrained()) return FAIL;
 				if (unit.IsUnconscious()) return FAIL;
 				if (unit.IsSwimming()) return FAIL;
+				
+				if (unit.eAI_IsChangingStance())
+					return FAIL;
 				
 				if (unit.IsRaised()) return FAIL;
 				

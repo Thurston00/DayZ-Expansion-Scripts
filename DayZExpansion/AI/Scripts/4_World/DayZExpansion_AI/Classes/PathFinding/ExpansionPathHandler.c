@@ -1,5 +1,7 @@
 class ExpansionPathHandler
 {
+	static const float PATH_RECALCULATE_THRESHOLD = 5.0;
+
 	eAIBase m_Unit;
 	vector m_UnitVelocity;
 	float m_Time;
@@ -9,6 +11,7 @@ class ExpansionPathHandler
 	autoptr PGFilter m_PathFilter_NoJumpClimb;
 	//autoptr PGFilter m_CheckFilter;
 	autoptr PGFilter m_BlockFilter;
+	autoptr PGFilter m_AllFilter;
 	int m_IncludeFlags;
 	int m_IncludeFlags_NoJumpClimb;
 	int m_ExcludeFlags;
@@ -61,6 +64,7 @@ class ExpansionPathHandler
 		m_PathFilter_NoJumpClimb = new PGFilter();
 		//m_CheckFilter = new PGFilter();
 		m_BlockFilter = new PGFilter();
+		m_AllFilter = new PGFilter();
 
 		m_AIWorld = GetGame().GetWorld().GetAIWorld();
 
@@ -71,6 +75,7 @@ class ExpansionPathHandler
 		m_Next1 = new ExpansionPathPoint();
 
 		SetPathFilter();
+		EnableSwimming();  //! Start with swimming enabled (helps on Sakhal if AI is standing on ice floe)
 	}
 
 	private void SetPathFilter()
@@ -86,7 +91,7 @@ class ExpansionPathHandler
 		 * PGPolyFlags.DOOR is for opened doors
 		 * PGPolyFlags.INSIDE is for inside buildings
 		 * 
-		 * High cost for DOOR_OPENED to path around door (the physics object, the doorway will still be used), same for deep water
+		 * High cost for DOOR_OPENED to path around door (the physics object, the doorway will still be used)
 		 */
 		m_IncludeFlags = PGPolyFlags.UNREACHABLE | PGPolyFlags.DISABLED | PGPolyFlags.WALK | PGPolyFlags.DOOR | PGPolyFlags.INSIDE | PGPolyFlags.LADDER;
 		m_ExcludeFlags = PGPolyFlags.CRAWL | PGPolyFlags.CROUCH | PGPolyFlags.SWIM_SEA | PGPolyFlags.SWIM;
@@ -107,9 +112,9 @@ class ExpansionPathHandler
 		m_PathFilter.SetCost(PGAreaType.FENCE_WALL, 5.0);  //! Vault
 		m_PathFilter.SetCost(PGAreaType.JUMP, 10.0);  //! Climb
 		m_PathFilter.SetCost(PGAreaType.WATER, 5.0);
-		m_PathFilter.SetCost(PGAreaType.WATER_DEEP, 10000.0);
+		m_PathFilter.SetCost(PGAreaType.WATER_DEEP, 10.0);
 		m_PathFilter.SetCost(PGAreaType.WATER_SEA, 5.0);
-		m_PathFilter.SetCost(PGAreaType.WATER_SEA_DEEP, 10000.0);
+		m_PathFilter.SetCost(PGAreaType.WATER_SEA_DEEP, 10.0);
 
 		m_PathFilter.SetCost(PGAreaType.DOOR_CLOSED, 4.0);
 		m_PathFilter.SetCost(PGAreaType.DOOR_OPENED, 10000.0);
@@ -131,9 +136,9 @@ class ExpansionPathHandler
 		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.FENCE_WALL, 1000.0);  //! Vault
 		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.JUMP, 1000.0);  //! Climb
 		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.WATER, 5.0);
-		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.WATER_DEEP, 10000.0);
+		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.WATER_DEEP, 10.0);
 		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.WATER_SEA, 5.0);
-		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.WATER_SEA_DEEP, 10000.0);
+		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.WATER_SEA_DEEP, 10.0);
 
 		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.DOOR_CLOSED, 4.0);
 		m_PathFilter_NoJumpClimb.SetCost(PGAreaType.DOOR_OPENED, 10000.0);
@@ -154,6 +159,9 @@ class ExpansionPathHandler
 
 		//! Block filter - only used to check if path is blocked. MUST use SAME flags as normal pathfilter EXCEPT door
 		m_BlockFilter.SetFlags(m_IncludeFlags & ~(PGPolyFlags.DOOR | PGPolyFlags.DISABLED), m_ExcludeFlags | PGPolyFlags.DOOR | PGPolyFlags.DISABLED, m_ExclusiveFlags);
+
+		//! 'All' filter - only used to check if point can be sampled
+		m_AllFilter.SetFlags(PGPolyFlags.ALL & ~(PGPolyFlags.CRAWL | PGPolyFlags.CROUCH), PGPolyFlags.CRAWL | PGPolyFlags.CROUCH, PGPolyFlags.NONE);
 	}
 
 	void SetAllowJumpClimb(bool allow, float timeout = 0)
@@ -175,21 +183,32 @@ class ExpansionPathHandler
 		return m_PathFilter_NoJumpClimb;
 	}
 
-	void EnableSwimming(bool enable = true)
+	void EnableSwimming(bool enable = true, bool forceUpdate = true)
 	{
 		if (enable)
 		{
+			if (m_IsSwimmingEnabled)
+				return;
+
 			int swim = PGPolyFlags.SWIM_SEA | PGPolyFlags.SWIM;
 			m_PathFilter.SetFlags(m_IncludeFlags | swim, m_ExcludeFlags & ~swim, m_ExclusiveFlags);
 			m_PathFilter_NoJumpClimb.SetFlags(m_IncludeFlags_NoJumpClimb | swim, m_ExcludeFlags_NoJumpClimb & ~swim, m_ExclusiveFlags);
 		}
 		else
 		{
+			if (!m_IsSwimmingEnabled)
+				return;
+
 			m_PathFilter.SetFlags(m_IncludeFlags, m_ExcludeFlags, m_ExclusiveFlags);
 			m_PathFilter_NoJumpClimb.SetFlags(m_IncludeFlags_NoJumpClimb, m_ExcludeFlags_NoJumpClimb, m_ExclusiveFlags);
 		}
 
-		ForceRecalculate(true);
+	#ifdef DIAG_DEVELOPER
+		ExpansionStatic.MessageNearPlayers(m_Unit.GetPosition(), 100.0, m_Unit.ToString() + " EnableSwimming " + enable + " forceUpdate " + forceUpdate);
+	#endif
+
+		if (forceUpdate)
+			ForceRecalculate(true);
 
 		m_IsSwimmingEnabled = enable;
 	}
@@ -537,7 +556,7 @@ class ExpansionPathHandler
 
 		UpdateCurrent();
 
-		if (m_Recalculate && (!m_SuppressRecalculate || m_Time > 5.0))
+		if (m_Recalculate && (!m_SuppressRecalculate || m_Time > PATH_RECALCULATE_THRESHOLD))
 		{
 			bool isSwimming;
 			float timeUntilNextUpdate;
@@ -547,7 +566,7 @@ class ExpansionPathHandler
 				isSwimming = true;
 				//! We need a higher time for swimming since path seems to be more likely to go through same points
 				//! and AI could end up moving in circles
-				timeUntilNextUpdate = 5.0;
+				timeUntilNextUpdate = PATH_RECALCULATE_THRESHOLD;
 			}
 			else
 			{
@@ -600,7 +619,7 @@ class ExpansionPathHandler
 			*/
 
 				// TODO: investigate why the same variable source must be used for 0th and 3rd parameter, and that it can't be a member variable for either
-				if (!m_AIWorld.SampleNavmeshPosition(inPos, maxDistance, GetFilter(), inPos) /*&& isFormationLeaderOnGround*/)
+				if (!m_AIWorld.SampleNavmeshPosition(inPos, maxDistance, m_AllFilter, inPos) /*&& isFormationLeaderOnGround*/)
 				{
 				#ifdef DIAG_DEVELOPER
 					if (!m_IsTargetUnreachable)
@@ -610,7 +629,7 @@ class ExpansionPathHandler
 					//inPos = oldPos;
 					m_IsTargetUnreachable = true;
 				}
-				else if (m_Unit.GetThreatToSelf() > 0.2 && !m_Unit.IsSwimming() && GetGame().GetWaterDepth(inPos) > 1.5)
+				else if (GetGame().GetWaterDepth(inPos) > 1.5 && !m_IsSwimmingEnabled && m_Unit.GetCurrentWaterLevel() < -0.5 && !m_Unit.m_eAI_EffectArea)
 				{
 				#ifdef DIAG_DEVELOPER
 					if (!m_IsTargetUnreachable)
@@ -930,7 +949,7 @@ class ExpansionPathHandler
 					if (!m_Next0.Parent)
 					{
 						m_IsJumpClimb = true;
-						m_DoClimbTestEx = true;
+						//m_DoClimbTestEx = true;
 					}
 
 					m_SuppressRecalculate = true;
@@ -943,7 +962,7 @@ class ExpansionPathHandler
 			if (!m_Next0.Parent)
 			{
 				m_IsJumpClimb = true;
-				m_DoClimbTestEx = true;
+				//m_DoClimbTestEx = true;
 			}
 		}
 
@@ -1065,7 +1084,7 @@ class ExpansionPathHandler
 		m_OverridingPosition = true;
 		m_SuppressRecalculate = false;
 		if (forceUpdate)
-			m_Time = 2.0;
+			m_Time = PATH_RECALCULATE_THRESHOLD;
 	}
 
 	bool GetOverride()
@@ -1087,6 +1106,6 @@ class ExpansionPathHandler
 		m_Recalculate = true;
 		m_SuppressRecalculate = false;
 		if (forceUpdate)
-			m_Time = 2.0;
+			m_Time = PATH_RECALCULATE_THRESHOLD;
 	}
 };

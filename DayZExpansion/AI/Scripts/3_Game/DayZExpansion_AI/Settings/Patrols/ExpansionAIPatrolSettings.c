@@ -492,7 +492,7 @@ class ExpansionAIPatrolSettings: ExpansionAIPatrolSettingsBase
             break;
             default:
                 if ( GetExpansionSettings().GetLog().AIObjectPatrol )
-                    GetExpansionSettings().GetLog().PrintLog("[AI Object Patrol] WARNING: The map '"+worldName+"' doesn't have a default config");
+                    GetExpansionSettings().GetLog().PrintLog("[AI Object Patrol] WARNING: The map \""+worldName+"\" doesn't have a default config");
                     GetExpansionSettings().GetLog().PrintLog("[AI Object Patrol] Generating an example config...");
 
                 ObjectPatrols.Insert( new ExpansionAIObjectPatrol(-3, "WALK", "SPRINT", "ALTERNATE", "West", "", true, false, 1.0, -1, -1, "Wreck_UH1Y"));
@@ -506,7 +506,7 @@ class ExpansionAIPatrolSettings: ExpansionAIPatrolSettingsBase
 	    }
 
         if ( GetExpansionSettings().GetLog().AIObjectPatrol )
-            GetExpansionSettings().GetLog().PrintLog("[AI Object Patrol] Generating default Object Patrol config for "+worldName);        
+            GetExpansionSettings().GetLog().PrintLog("[AI Object Patrol] Generating default Object Patrol config for \""+worldName+"\"");        
 	}
 
     void DefaultPatrols(string worldName)
@@ -609,7 +609,7 @@ class ExpansionAIPatrolSettings: ExpansionAIPatrolSettingsBase
 			break;
             default:
                 if ( GetExpansionSettings().GetLog().AIPatrol )
-                    GetExpansionSettings().GetLog().PrintLog("[AI Patrol] WARNING: The map '"+worldName+"' doesn't have a default config");
+                    GetExpansionSettings().GetLog().PrintLog("[AI Patrol] WARNING: The map \""+worldName+"\" doesn't have a default config");
                     GetExpansionSettings().GetLog().PrintLog("[AI Patrol] Generating an example config...");
 
 				//! Default patrols are deliberately designed to be opposing factions and run into each other eventually :-)
@@ -620,7 +620,7 @@ class ExpansionAIPatrolSettings: ExpansionAIPatrolSettingsBase
             break;
         }
         if ( GetExpansionSettings().GetLog().AIPatrol )
-            GetExpansionSettings().GetLog().PrintLog("[AI Patrol] Generating default Patrol config for "+worldName);
+            GetExpansionSettings().GetLog().PrintLog("[AI Patrol] Generating default Patrol config for \""+worldName+"\"");
         
     }
 	

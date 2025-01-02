@@ -127,8 +127,13 @@ class ExpansionPathPoint
 	{
 		vector transform[4];
 		pathFinding.m_Unit.GetTransform(transform);
+		vector startPos = transform[3];
+
+		//! Hack fix for pathfinding on Sakhal ice floes (would not find points otherwise)
+		if (pathFinding.m_Unit.eAI_ShouldUseSurfaceUnderWaterForPathFinding())
+			startPos[1] = pathFinding.m_Unit.m_eAI_SurfaceY;
 		
-		return FindPathFrom(transform[3], pathFinding, path, pathGlueIdx);
+		return FindPathFrom(startPos, pathFinding, path, pathGlueIdx);
 	}
 
 	bool FindPathFrom(vector startPos, ExpansionPathHandler pathFinding, inout array<vector> path, out int pathGlueIdx = -1)
@@ -157,7 +162,37 @@ class ExpansionPathPoint
 		else
 		{
 	#endif
-			found = pathFinding.m_AIWorld.FindPath(startPos, Position, filter, path);
+			bool isSwimming = pathFinding.m_Unit.IsSwimming();
+
+			if (isSwimming && GetGame().GetWaterDepth(Position) > 0.0)
+			{
+				//! AIWorld::FindPath will use terrain under water, which can be problematic.
+				//! If direct path to target is clear, use it if target position is in water.
+
+				vector fwdPos = Vector(Position[0], startPos[1], Position[2]);
+				vector fwdDir = vector.Direction(startPos, fwdPos);
+				float fwdLen = fwdDir.Length();
+
+				if (fwdLen > 0.55)
+				{
+					//! @note to have full swim speed due to speed handling in eAICommandMove, distance needs to be at least 4.472m
+					vector rayEnd = startPos + fwdDir.Normalized() * Math.Min(fwdLen, 250.0);
+
+					if (!IsBlockedGeom(startPos, rayEnd, pathFinding.m_Unit))
+					{
+						path.Insert(startPos);
+						path.Insert(rayEnd);
+
+						found = true;
+
+						pathFinding.m_IsTargetUnreachable = false;
+						pathFinding.m_IsUnreachable = false;
+					}
+				}
+			}
+			
+			if (!found)
+				found = pathFinding.m_AIWorld.FindPath(startPos, Position, filter, path);
 
 			//! Deal with the case where AI is on top of an object and needs to take a leap of faith
 			//! because there is no navmesh connection to ground
@@ -185,9 +220,9 @@ class ExpansionPathPoint
 				vector dir = vector.Direction(endPos, Position);
 				vector targetPos;
 
-				if (dir.LengthSq() > 10000.0)  //! Limit to 100 m so we have a chance the path actually ends at endPos
+				if (dir.LengthSq() > 100.0)  //! Limit to 10 m so we have a chance the path actually ends at endPos
 				{
-					targetPos = endPos + dir.Normalized() * 100.0;  //! Let's just hope this doesn't turn a reachable Position into unreachable...
+					targetPos = endPos + dir.Normalized() * 10.0;  //! Let's just hope this doesn't turn a reachable Position into unreachable...
 				}
 				else
 				{
@@ -198,12 +233,21 @@ class ExpansionPathPoint
 				{
 					found = false;
 
+					if (isSwimming && tempPath.Count() > 2)
+						tempPath = OptimizePathForSwimming(tempPath, pathFinding);
+
 					int count = tempPath.Count();
 					vector tempEnd = tempPath[count - 1];
-					vector checkPos = tempEnd;
-					checkPos[1] = Math.Max(Math.Max(endPos[1], checkPos[1]), pathFinding.m_Unit.GetPosition()[1]) + 0.5;
 					if (count > 2 || vector.DistanceSq(tempEnd, endPos) > 0.0001)
 					{
+						TVectorArray toTempEnd = {};
+						if (pathFinding.m_AIWorld.FindPath(startPos, tempEnd, filter, toTempEnd))
+						{
+							path.Copy(toTempEnd);
+							pathGlueIdx = path.Count();
+							endPos = path[pathGlueIdx - 1];
+						}
+
 						for (i = count - 1; i >= 0; i--)
 						{
 							//if (tempPath[i][1] - endPos[1] < 2.5)
@@ -215,15 +259,21 @@ class ExpansionPathPoint
 						//if (i < 0)
 							//pathFinding.m_IsUnreachable =  false;
 
-						if (Math.IsPointInCircle(tempEnd, 10.0, endPos) && tempEnd[1] - endPos[1] < 2.5 && !pathFinding.IsBlockedPhysically(endPos + "0 0.5 0", checkPos))
+						vector checkPos = tempEnd;
+						checkPos[1] = Math.Max(Math.Max(endPos[1], checkPos[1]), pathFinding.m_Unit.GetPosition()[1]) + 1.5;
+
+						if (Math.IsPointInCircle(tempEnd, 10.0, endPos) && tempEnd[1] - endPos[1] < 2.5 && !pathFinding.IsBlockedPhysically(endPos + "0 1.5 0", checkPos))
 						{
 							vector surfacePosition = ExpansionStatic.GetSurfaceRoadPosition(tempEnd);
 							//! Swim start water level = 1.5 m, see DayZPlayerUtils::CheckWaterLevel
-							if (pathFinding.m_Unit.IsSwimming() || GetGame().GetWaterDepth(surfacePosition) <= 1.5)
+							if (isSwimming || pathFinding.m_IsSwimmingEnabled || GetGame().GetWaterDepth(surfacePosition) <= 1.5)
 							{
 								eAICommandMove move = pathFinding.m_Unit.GetCommand_MoveAI();
 								if (move && !move.IsBlocked())
+								{
 									found = true;
+									pathFinding.m_Time = -15.0;  //! Longer delay until next path recalculation
+								}
 							}
 						}
 					}
@@ -248,6 +298,11 @@ class ExpansionPathPoint
 				}
 			#endif
 			}
+			else if (isSwimming && path.Count() > 2)
+			{
+				path = OptimizePathForSwimming(path, pathFinding);
+			}
+
 	#ifdef EXPANSION_AI_ATTACHMENT_PATH_FINDING
 		}
 	#endif
@@ -263,5 +318,84 @@ class ExpansionPathPoint
 	#endif
 
 		return found;
+	}
+
+	/**
+	 * @brief create copy of path with all intermediate points removed that are under water and can be connected without hitting any geo,
+	 * and insert points where necessary to allow climbing on blocking geo (very useful for Sakhal)
+	 */
+	array<vector> OptimizePathForSwimming(array<vector> path, ExpansionPathHandler pathFinding)
+	{
+		int lastIdx = path.Count() - 1;
+		array<vector> condensedPath = {};
+		vector prev;
+
+	#ifdef DIAG_DEVELOPER
+		vector origin;
+	#endif
+
+		foreach (int i, vector point: path)
+		{
+			float waterDepth = GetGame().GetWaterDepth(point);
+			if (waterDepth > 0.0)
+				point[1] = point[1] + waterDepth;
+
+			if (i == 0 || i == lastIdx || waterDepth <= 0.0)
+			{
+				condensedPath.Insert(point);
+
+				prev = point;
+			#ifdef DIAG_DEVELOPER
+				origin = point;
+			#endif
+			}
+			else
+			{
+				vector next = path[i + 1];
+				float waterDepthNext = GetGame().GetWaterDepth(next);
+				if (waterDepthNext > 0.0)
+					next[1] = next[1] + waterDepthNext;
+
+				if (IsBlockedGeom(prev, next, pathFinding.m_Unit))
+				{
+					condensedPath.Insert(point);
+
+					prev = point;
+				#ifdef DIAG_DEVELOPER
+					origin = point;
+				#endif
+				}
+			#ifdef DIAG_DEVELOPER
+				else
+				{
+					pathFinding.m_Unit.Expansion_DebugObject(96969 + i, point, "ExpansionDebugConeSmall_Orange", point - origin, origin, 300.0, ShapeFlags.NOZBUFFER);
+					origin = point;
+				}
+			#endif
+			}
+		}
+
+		return condensedPath;
+	}
+
+	bool IsBlockedGeom(vector begPos, vector endPos, eAIBase ignore = null, out vector contactPos = vector.Zero, out vector contactDir = vector.Zero, out int contactComponent = 0, out Object blockingObject = null)
+	{
+		PhxInteractionLayers layerMask;
+		layerMask |= PhxInteractionLayers.BUILDING;
+		layerMask |= PhxInteractionLayers.DOOR;
+		layerMask |= PhxInteractionLayers.FENCE;
+		layerMask |= PhxInteractionLayers.ITEM_LARGE;
+		layerMask |= PhxInteractionLayers.VEHICLE;
+		layerMask |= PhxInteractionLayers.ROADWAY;
+		layerMask |= PhxInteractionLayers.TERRAIN;
+		float hitFraction;
+
+		//! @note can not use RaycastRV here, would result in false positives near piers
+		//! To test this on Chernarus, spawn AI at <14297.8, -0.36239, 13245.3> (in water) and set a waypoint
+		//! at <14297.7, 3.31738, 13250.3> (on pier)
+		if (DayZPhysics.RayCastBullet(begPos, endPos, layerMask, ignore, blockingObject, contactPos, contactDir, hitFraction))
+			return true;
+
+		return false;
 	}
 };

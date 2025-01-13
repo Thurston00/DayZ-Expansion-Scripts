@@ -36,6 +36,7 @@ class eAIGroup
 	private eAIWaypointBehavior m_WaypointBehaviour = eAIWaypointBehavior.ALTERNATE;
 	int m_CurrentWaypointIndex;
 	bool m_BackTracking;
+	vector m_CurrentWaypoint;
 
 	ref array<ref ExpansionLocatorArray> m_RoamingLocations = {};
 	//vector m_CurrentRoamingLocationPosition;
@@ -43,7 +44,7 @@ class eAIGroup
 	ref set<Object> m_VisitedCrashSites =  new set<Object>;
 	ref ExpansionLocatorArray m_RoamingLocation;
 	float m_RoamingLocationReachedTimestamp;
-	bool m_ClearVisitedBuildingsOnLocationReached;
+	int m_ClearVisitedBuildingsOnLocationReached;
 
 	private eAIGroupFormationState m_FormationState = eAIGroupFormationState.IN;
 
@@ -195,9 +196,14 @@ class eAIGroup
 		return m_Waypoints;
 	}
 
+	void SetCurrentWaypoint(vector pos)
+	{
+		m_CurrentWaypoint = pos;
+	}
+
 	vector GetCurrentWaypoint()
 	{
-		return m_Waypoints[m_CurrentWaypointIndex];
+		return m_CurrentWaypoint;
 	}
 
 	void ClearWaypoints()
@@ -437,13 +443,14 @@ class eAIGroup
 				destinationPosition = ExpansionMath.GetRandomPointInRing(destination.position, 5.0, 20.0);
 			}
 
+			//! TODO: For map locations, use SceneGetEntitiesInBox to get closest building in radius (and add to visited buildings)
 			destinationPosition = ExpansionStatic.GetSurfaceRoadPosition(destinationPosition[0], destinationPosition[2], RoadSurfaceDetection.CLOSEST);
 
 			//! If next destination is > 500 m from formation leader position, "forget" visited buildings
 			if (vector.DistanceSq(position, destinationPosition) > 250000.0)
-				m_ClearVisitedBuildingsOnLocationReached = true;
+				m_ClearVisitedBuildingsOnLocationReached = m_VisitedBuildings.Count();
 			else
-				m_ClearVisitedBuildingsOnLocationReached = false;
+				m_ClearVisitedBuildingsOnLocationReached = 0;
 
 			if (ai && ai.GetMovementSpeedLimit() >= 2)
 				ai.SetMovementSpeedLimit(3, true);
@@ -470,10 +477,29 @@ class eAIGroup
 	{
 		if (m_RoamingLocation && m_RoamingLocation.type != "Building")
 		{
-			if (m_ClearVisitedBuildingsOnLocationReached && clearVisitedBuildings)
-				m_VisitedBuildings.Clear();
+			bool clearVisitedBuildingsOnLocationReached;
 
-			if (m_VisitedBuildings.Count() == 0)
+			if (m_ClearVisitedBuildingsOnLocationReached && clearVisitedBuildings)
+				clearVisitedBuildingsOnLocationReached = true;
+
+			if (clearVisitedBuildingsOnLocationReached)
+			{
+				if (m_ClearVisitedBuildingsOnLocationReached >= m_VisitedBuildings.Count())
+				{
+					EXTrace.Print(EXTrace.AI, this, "Clearing " + m_VisitedBuildings.Count() + "/" + m_ClearVisitedBuildingsOnLocationReached + " visited buildings");
+					m_VisitedBuildings.Clear();
+				}
+				else
+				{
+					EXTrace.Print(EXTrace.AI, this, "Clearing " + m_ClearVisitedBuildingsOnLocationReached + "/" + m_VisitedBuildings.Count() + " visited buildings");
+					for (int i = m_ClearVisitedBuildingsOnLocationReached - 1; i >= 0; i--)
+					{
+						m_VisitedBuildings.Remove(i);
+					}
+				}
+			}
+
+			if (m_VisitedBuildings.Count() == 0 || clearVisitedBuildingsOnLocationReached)
 				m_RoamingLocationReachedTimestamp = GetGame().GetTickTime();
 
 			//! Remove destination from roaming locations if not a helicrash (helicrashes are events and not in roaming locations)

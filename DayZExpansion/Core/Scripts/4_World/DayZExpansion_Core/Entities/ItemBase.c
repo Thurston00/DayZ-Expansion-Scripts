@@ -756,15 +756,6 @@ modded class ItemBase
 			return;
 
 		PlayerBase player;
-		string playerDesc;
-
-		if ( source && Class.CastTo( player, source.GetHierarchyRootPlayer() ) )
-		{
-			playerDesc = "Player \"" + player.GetIdentityName() + "\" (ID " + player.GetIdentityUID() + ") at " + ExpansionStatic.VectorToString(player.GetPosition());
-		} else
-		{
-			playerDesc = "A player";
-		}
 
 		string sourceDesc;
 
@@ -777,7 +768,12 @@ modded class ItemBase
 			sourceDesc = ammo + " from " + sourceDesc;
 
 		GetExpansionSettings().GetLog().PrintLog( "[BaseBuildingRaiding] ------------------------- Expansion Base Raiding Damage Report -------------------------" );
-		GetExpansionSettings().GetLog().PrintLog( "[BaseBuildingRaiding] " + playerDesc + " damaged " + GetType() + " at " + ExpansionStatic.VectorToString(GetPosition()) );
+		
+		if ( source && Class.CastTo( player, source.GetHierarchyRootPlayer() ) )
+			GetExpansionSettings().GetLog().PrintLog( "[BaseBuildingRaiding] Player \"{1:name}\" (id={1:id} pos={1:position}) damaged {2:type} at {2:position}", player, this );
+		else
+			GetExpansionSettings().GetLog().PrintLog( "[BaseBuildingRaiding] A player damaged {1:type} at {1:position}", this );
+
 		GetExpansionSettings().GetLog().PrintLog( "[BaseBuildingRaiding] They dealt "  + dmg + " * " + damageMultiplier + " = " + ( dmg * damageMultiplier ) + " damage with " + sourceDesc );
 		GetExpansionSettings().GetLog().PrintLog( "[BaseBuildingRaiding] " + damageZone + " hitpoints decreased from " + health + " to " + GetHealth( damageZone, "Health" ) );
 		GetExpansionSettings().GetLog().PrintLog( "[BaseBuildingRaiding] ----------------------------------------------------------------------------------------" );

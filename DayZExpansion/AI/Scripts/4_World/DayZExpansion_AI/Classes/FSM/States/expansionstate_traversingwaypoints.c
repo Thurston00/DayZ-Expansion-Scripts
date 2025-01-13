@@ -153,6 +153,8 @@ class ExpansionState_TraversingWaypoints: eAIState
 			threshold += 0.01;
 		}
 		
+		unit.GetGroup().m_CurrentWaypoint = waypoint;
+		
 		previousDistance = distance;
 		
 		unit.OverrideTargetPosition(waypoint, isFinal);

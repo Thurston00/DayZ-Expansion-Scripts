@@ -478,6 +478,28 @@ class ExpansionVehicle
 		return false;
 	}
 
+	CarDoorState GetDoorState(int seatIdx)
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return CarDoorState.DOORS_MISSING;
+	}
+
+	CarDoorState GetDoorState(string slotName)
+	{
+		EXError.Error(this, "NOT IMPLEMENTED");
+		return CarDoorState.DOORS_MISSING;
+	}
+
+	bool HasDoor(int seatIdx)
+	{
+		return GetDoorState(seatIdx) != CarDoorState.DOORS_MISSING;
+	}
+
+	bool IsDoorClosed(int seatIdx)
+	{
+		return GetDoorState(seatIdx) == CarDoorState.DOORS_CLOSED;
+	}
+
 	void SetLockState(ExpansionVehicleLockState lockState)
 	{
 		EXError.Error(this, "NOT IMPLEMENTED");
@@ -774,7 +796,7 @@ class ExpansionVehicle
 	{
 		if (GetGame().IsServer() && GetExpansionSettings().GetLog().VehicleDestroyed && !m_DestructionLogged)
 		{
-    		GetExpansionSettings().GetLog().PrintLog("[VehicleDestroyed] " + GetEntity().GetType() + " (id=" + GetPersistentIDString() + " pos=" + GetEntity().GetPosition() + ")");
+    		GetExpansionSettings().GetLog().PrintLog("[VehicleDestroyed] {1:type} (id={1:persistent_id} pos={1:position})", GetEntity());
 
 			m_DestructionLogged = true;
 		}
@@ -784,7 +806,7 @@ class ExpansionVehicle
 	{
 		if (GetGame().IsServer() && GetExpansionSettings().GetLog().VehicleDeleted)
 		{
-			GetExpansionSettings().GetLog().PrintLog("[VehicleDeleted] " + GetType() + " (id=" + GetPersistentIDString() + " pos=" + GetPosition().ToString() + ")");
+			GetExpansionSettings().GetLog().PrintLog("[VehicleDeleted] {1:type} (id={1:persistent_id} pos={1:position})", GetEntity());
 		}
 	}
 
@@ -1244,6 +1266,17 @@ class ExpansionVehicleT<Class T>: ExpansionVehicle
 	override bool CanPlayerAttach()
 	{
 		return m_Vehicle.Expansion_CanPlayerAttach();
+	}
+
+	override CarDoorState GetDoorState(int seatIdx)
+	{
+		string slotName = GetDoorInvSlotNameFromSeatPos(seatIdx);
+		return GetDoorState(slotName);
+	}
+
+	override CarDoorState GetDoorState(string slotName)
+	{
+		return m_Vehicle.Expansion_GetCarDoorsState(slotName);
 	}
 
 #ifdef EXPANSIONMODVEHICLE

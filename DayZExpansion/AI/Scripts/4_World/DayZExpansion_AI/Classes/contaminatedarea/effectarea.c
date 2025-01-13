@@ -32,7 +32,7 @@ modded class EffectArea
 		{
 			//! @note can't check inheritance against dangerous area types on client since the areas are EffectAreas on client
 			//! Since we are only using this to draw debug shapes it should be fine
-			EXTrace.Print(EXTrace.AI, this, ExpansionStatic.GetDebugInfo(this) + " " + m_Position.ToString() + " -> UpdateClusters");
+			EXTrace.Print(EXTrace.AI, null, ExpansionStatic.GetDebugInfo(this) + " " + m_Position.ToString() + " -> UpdateClusters");
 			s_Expansion_DangerousAreas.UpdateClusters(this);
 		}
 #endif
@@ -42,22 +42,32 @@ modded class EffectArea
 	{
 		super.OnPlayerEnterServer(player, trigger);
 
-		player.Expansion_OnDangerousAreaEnterServer(this, trigger);
+		if (ExpansionStatic.IsAnyOf(this, s_Expansion_DangerousAreaTypes))
+			player.Expansion_OnDangerousAreaEnterServer(this, trigger);
 	}
 
 	override void OnPlayerExitServer(PlayerBase player, EffectTrigger trigger)
 	{
 		super.OnPlayerExitServer(player, trigger);
 
-		player.Expansion_OnDangerousAreaExitServer(this, trigger);
+		if (ExpansionStatic.IsAnyOf(this, s_Expansion_DangerousAreaTypes))
+			player.Expansion_OnDangerousAreaExitServer(this, trigger);
 	}
 
 	void ~EffectArea()
 	{
-		if (s_Expansion_DangerousAreas && m_Expansion_MergedCluster)
+		if (!GetGame())
+			return;
+
+		if (s_Expansion_DangerousAreas)
 		{
 			s_Expansion_DangerousAreas.RemoveItemUnOrdered(this);
 
+			EXTrace.Print(EXTrace.AI, this, "Removed from " + ExpansionStatic.GetDebugInfo(s_Expansion_DangerousAreas));
+		}
+
+		if (m_Expansion_MergedCluster)
+		{
 			//! Update cluster containing this area
 			auto cluster = m_Expansion_MergedCluster;
 
@@ -71,13 +81,13 @@ modded class EffectArea
 
 					EXTrace.Print(EXTrace.AI, this, "Removed from " + cluster);
 
-					cluster.Update();
+					cluster.RemoveNonOverlappingAndUpdate();
 				}
 			}
 		}
 	}
 
-	bool Expansion_IsOverlapping(EffectArea other)
+	bool Expansion_IsOverlapping(EffectArea other, bool checkVertical = true)
 	{
 		//! Check horizontal overlap
 		float dx = m_Position[0] - other.m_Position[0];
@@ -87,6 +97,9 @@ modded class EffectArea
 		if (dist > m_Radius + other.m_Radius)
 			return false;
 
+		if (!checkVertical)
+			return true;
+
 		//! Check vertical overlap
 		float minY = m_Position[1] - m_NegativeHeight;
 		float maxY = m_Position[1] + m_PositiveHeight;
@@ -94,6 +107,31 @@ modded class EffectArea
 		float otherMaxY = other.m_Position[1] + other.m_PositiveHeight;
 
 		if (maxY < otherMinY || otherMaxY < minY)
+			return false;
+
+		return true;
+	}
+
+	bool Expansion_Contains(EffectArea other, bool checkVertical = true)
+	{
+		//! Check horizontal containment
+		float dx = m_Position[0] - other.m_Position[0];
+		float dz = m_Position[2] - other.m_Position[2];
+		float dist = Math.Sqrt(dx * dx + dz * dz);
+
+		if (m_Radius < dist + other.m_Radius)
+			return false;
+
+		if (!checkVertical)
+			return true;
+
+		//! Check vertical containment
+		float minY = m_Position[1] - m_NegativeHeight;
+		float maxY = m_Position[1] + m_PositiveHeight;
+		float otherMinY = other.m_Position[1] - other.m_NegativeHeight;
+		float otherMaxY = other.m_Position[1] + other.m_PositiveHeight;
+
+		if (minY > otherMinY || maxY < otherMaxY)
 			return false;
 
 		return true;

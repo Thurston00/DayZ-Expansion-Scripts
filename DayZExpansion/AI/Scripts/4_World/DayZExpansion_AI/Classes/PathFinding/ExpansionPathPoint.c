@@ -283,8 +283,26 @@ class ExpansionPathPoint
 					found = false;
 				}
 
-				pathFinding.m_IsTargetUnreachable = !found;
-				pathFinding.m_IsUnreachable = !found;
+			#ifdef DIAG_DEVELOPER
+				if (!pathFinding.m_IsUnreachable)
+				{
+					if (path.Count() == 0)
+						EXTrace.Print(EXTrace.AI, this, pathFinding.m_Unit.ToString() + " unreachable (no path)");
+					else if (!found)
+						EXTrace.Print(EXTrace.AI, this, pathFinding.m_Unit.ToString() + " unreachable (not found)");
+				}
+			#endif
+
+				if (found || path.Count() > 0)
+				{
+					pathFinding.m_IsTargetUnreachable = false;
+					pathFinding.m_IsUnreachable = false;
+				}
+				else
+				{
+					pathFinding.m_IsTargetUnreachable = true;
+					pathFinding.m_IsUnreachable = true;
+				}
 
 			#ifdef EXPANSION_AI_DEBUG_UNREACHABLE
 				if (found)

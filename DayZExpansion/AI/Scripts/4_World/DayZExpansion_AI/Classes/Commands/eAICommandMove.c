@@ -311,6 +311,9 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 	override void PreAnimUpdate(float pDt)
 	{
+		if (!GetGame())
+			return;
+
 #ifdef EXTRACE_DIAG
 		auto trace = EXTrace.Profile(EXTrace.AI, this);
 #endif
@@ -383,7 +386,7 @@ class eAICommandMove: ExpansionHumanCommandScript
 			m_PathDir2DNormalized = Vector(m_PathDirNormalized[0], 0.0, m_PathDirNormalized[2]);
 
 			//if (isTargetPositionFinal && m_PathFinding.m_IsUnreachable)
-			if (isPathPointFinal && !m_PathFinding.m_IsUnreachable)
+			if ((isPathPointFinal || m_TargetMovementDirection != 0) && !m_PathFinding.m_IsUnreachable)
 			{
 				if (m_Unit.eAI_IsDangerousAltitude())
 				{
@@ -404,6 +407,10 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 					if (!m_Unit.eAI_IsFallSafe(checkDirection * 2.0))
 					{
+					#ifdef DIAG_DEVELOPER
+						if (!m_PathFinding.m_IsUnreachable)
+							EXTrace.Print(EXTrace.AI, this, m_Unit.ToString() + " unreachable (not fall safe)");
+					#endif
 						m_PathFinding.m_IsUnreachable = true;
 						m_PathFinding.m_IsTargetUnreachable = true;
 					}
@@ -416,6 +423,10 @@ class eAICommandMove: ExpansionHumanCommandScript
 					//! Swim start water level = 1.5 m, see DayZPlayerUtils::CheckWaterLevel
 					if (GetGame().GetWaterDepth(surfacePosition) > 1.5)
 					{
+					#ifdef DIAG_DEVELOPER
+						if (!m_PathFinding.m_IsUnreachable)
+							EXTrace.Print(EXTrace.AI, this, m_Unit.ToString() + " unreachable (deep water)");
+					#endif
 						m_PathFinding.m_IsUnreachable = true;
 						m_PathFinding.m_IsTargetUnreachable = true;
 				#ifdef DIAG_DEVELOPER
@@ -1615,6 +1626,9 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 	override void PrePhysUpdate(float pDt)
 	{
+		if (!GetGame())
+			return;
+
 		if (PrePhys_IsTag(m_Table.m_TAG_WeaponFire))
 			m_IsTagWeaponFire = true;
 		else
@@ -1717,6 +1731,10 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 					if (IsBlockedUnreachable(hitObject))
 					{
+					#ifdef DIAG_DEVELOPER
+						if (!m_PathFinding.m_IsUnreachable)
+							EXTrace.Print(EXTrace.AI, this, m_Unit.ToString() + " unreachable (blocked by buggy object)");
+					#endif
 						m_PathFinding.m_IsTargetUnreachable = true;
 						m_PathFinding.m_IsUnreachable = true;
 					}
@@ -1759,6 +1777,10 @@ class eAICommandMove: ExpansionHumanCommandScript
 
 				if (IsBlockedUnreachable(hitObject))
 				{
+				#ifdef DIAG_DEVELOPER
+					if (!m_PathFinding.m_IsUnreachable)
+						EXTrace.Print(EXTrace.AI, this, m_Unit.ToString() + " unreachable (blocked by buggy object)");
+				#endif
 					m_PathFinding.m_IsTargetUnreachable = true;
 					m_PathFinding.m_IsUnreachable = true;
 				}
@@ -1792,10 +1814,16 @@ class eAICommandMove: ExpansionHumanCommandScript
 		{
 			switch (obj.GetType())
 			{
+				//! Objects with no navmesh but blocking physically
 				//! https://feedback.bistudio.com/T181817
 				case "Land_Castle_Wall1_End1_nolc":
 				case "Land_Castle_Wall1_End2_nolc":
 					return true;
+				//! AI cannot open/pass bunker door (not implemented, requires interaction with PunchedCard slot next to door)
+				case "Land_Underground_Entrance":
+					if (m_PathFinding.m_IsBlocked)
+						return true;
+					break;
 			}
 		}
 

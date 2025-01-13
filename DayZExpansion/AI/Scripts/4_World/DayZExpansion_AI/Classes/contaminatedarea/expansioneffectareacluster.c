@@ -132,6 +132,10 @@ class Expansion_EffectAreas: array<EffectArea>
 
 	void UpdateClusters(EffectArea area)
 	{
+	#ifdef EXTRACE_DIAG
+		auto trace = EXTrace.Start(EXTrace.AI, this, ExpansionStatic.GetDebugInfo(area));
+	#endif
+
 		ExpansionEffectAreaMergedCluster cluster;
 		int count = Count();
 
@@ -139,8 +143,19 @@ class Expansion_EffectAreas: array<EffectArea>
 		{
 			EffectArea other = Get(i);
 
+		#ifndef SERVER
+			if (!other && GetGame().IsMultiplayer())
+			{
+				EXError.Warn(this, "Warning: NULL entry at index " + i);
+				continue;
+			}
+		#endif
+
 			if (cluster != other.m_Expansion_MergedCluster && area.Expansion_IsOverlapping(other))
 			{
+				if (other.Expansion_Contains(area, false))
+					return;
+
 				if (!cluster)
 				{
 					cluster = other.m_Expansion_MergedCluster;
@@ -224,6 +239,7 @@ class ExpansionEffectAreaMergedCluster
 	float m_Radius;
 	float m_NegativeHeight;
 	float m_PositiveHeight;
+	bool m_Updated;
 
 #ifdef DIAG_DEVELOPER
 	protected ref array<Shape> m_DebugShapes = {};
@@ -255,6 +271,7 @@ class ExpansionEffectAreaMergedCluster
 		float xSum;
 		float ySum;
 		float zSum;
+		float radiusSum;
 
 		float minY = float.MAX;
 		float maxY = -float.MAX;
@@ -263,6 +280,7 @@ class ExpansionEffectAreaMergedCluster
 		float dz;
 
 		int i;
+		//int j;
 		int count = m_Areas.Count();
 
 		EffectArea area;
@@ -271,6 +289,7 @@ class ExpansionEffectAreaMergedCluster
 		TStringArray areasInfo = {};
 	#ifndef SERVER
 		CleanupDebugShapes();
+		int color;
 	#endif
 	#endif
 
@@ -282,9 +301,10 @@ class ExpansionEffectAreaMergedCluster
 
 			area.m_Expansion_MergedCluster = this;
 
-			xSum += area.m_Position[0];
+			xSum += area.m_Position[0] * area.m_Radius;
 			ySum += area.m_Position[1];
-			zSum += area.m_Position[2];
+			zSum += area.m_Position[2] * area.m_Radius;
+			radiusSum += area.m_Radius;
 
 			minY = Math.Min(minY, area.m_Position[1] - area.m_NegativeHeight);
 			maxY = Math.Max(maxY, area.m_Position[1] + area.m_PositiveHeight);
@@ -294,15 +314,16 @@ class ExpansionEffectAreaMergedCluster
 		#endif
 		}
 
-		m_Position[0] = xSum / count;
 		m_Position[1] = ySum / count;
-		m_Position[2] = zSum / count;
 
 		m_NegativeHeight = m_Position[1] - minY;
 		m_PositiveHeight = maxY - m_Position[1];
 
 		if (count > 1)
 		{
+			m_Position[0] = xSum / radiusSum;
+			m_Position[2] = zSum / radiusSum;
+
 			//! Find the outermost edges of all areas in this cluster (from center of merged cylinder)
 
 		#ifdef DIAG_DEVELOPER
@@ -312,6 +333,11 @@ class ExpansionEffectAreaMergedCluster
 		#endif
 		#endif
 
+		/*
+			EffectArea other;
+			bool skip;
+		*/
+
 			int reach;
 			TIntArray distancesFromCenter = {};
 			map<int, ref Expansion_EffectAreas> areasByReach = new map<int, ref Expansion_EffectAreas>;
@@ -320,6 +346,27 @@ class ExpansionEffectAreaMergedCluster
 			for (i = 0; i < count; i++)
 			{
 				area = m_Areas[i];
+
+			/*
+				skip = false;
+
+				for (j = 0; j < count; j++)
+				{
+					if (j == i)
+						continue;
+
+					other = m_Areas[j];
+
+					if (other.Expansion_Contains(area, false))
+					{
+						skip = true;
+						break;
+					}
+				}
+
+				if (skip)
+					continue;
+			*/
 
 				dx = area.m_Position[0] - m_Position[0];
 				dz = area.m_Position[2] - m_Position[2];
@@ -333,6 +380,14 @@ class ExpansionEffectAreaMergedCluster
 				else
 					areasByReach[reach] = {area};
 			}
+
+	/*
+			count = distancesFromCenter.Count();
+		}
+
+		if (count > 1)
+		{
+	*/
 
 			//! Find up to three points furthest from center
 
@@ -385,6 +440,9 @@ class ExpansionEffectAreaMergedCluster
 
 			float distSqAB = ab.LengthSq();
 
+			EffectArea areaA = outermost[0];
+			EffectArea areaB = outermost[1];
+
 			vector center;
 
 			if (n == 3)
@@ -397,30 +455,57 @@ class ExpansionEffectAreaMergedCluster
 				float distSqBC = bc.LengthSq();
 				float distSqCA = ca.LengthSq();
 
+				EffectArea areaC = outermost[2];
+
 				//! Make side A-B the longest
 
 				if (distSqBC < distSqCA)
 				{
 					ExpansionUtil<float>.Swap(distSqBC, distSqCA);
 					ExpansionUtil<vector>.Swap(a, b);
+					ExpansionUtil<EffectArea>.Swap(areaA, areaB);
 				}
 
 				if (distSqAB < distSqBC)
 				{
 					ExpansionUtil<float>.Swap(distSqAB, distSqBC);
 					ExpansionUtil<vector>.Swap(c, a);
+					ExpansionUtil<EffectArea>.Swap(areaC, areaA);
 				}
 
 				if (distSqBC + distSqCA <= distSqAB)
 				{
 					//! Obtuse triangle, use longest diameter
 
+					dir[0] = areaB.m_Position[0] - areaA.m_Position[0];
+					dir[2] = areaB.m_Position[2] - areaA.m_Position[2];
+
+					dir.Normalize();
+
+					a = areaA.m_Position - dir * areaA.m_Radius;
+					b = areaB.m_Position + dir * areaB.m_Radius;
+
+				#ifdef DIAG_DEVELOPER
+				#ifndef SERVER
+					m_DebugShapes.Insert(Debug.DrawArrow(a, a + Vector(0, m_PositiveHeight + 10, 0), 0.5, COLOR_GREEN));
+					m_DebugShapes.Insert(Debug.DrawArrow(b, b + Vector(0, m_PositiveHeight + 10, 0), 0.5, COLOR_GREEN));
+				#endif
+				#endif
+
+					a[1] = 0;
+					b[1] = 0;
+
 					center = (a + b) * 0.5;
 
-					m_Position[0] = center[0];
-					m_Position[2] = center[2];
+					ab = b - a;
 
-					m_Radius = Math.Sqrt(distSqAB) * 0.5;
+					m_Radius = ab.Length() * 0.5;
+
+				#ifdef DIAG_DEVELOPER
+				#ifndef SERVER
+					color = COLOR_YELLOW;
+				#endif
+				#endif
 				}
 				else
 				{
@@ -428,49 +513,99 @@ class ExpansionEffectAreaMergedCluster
 
 					center = ExpansionMath.Circumcenter(a, b, c);
 
-					m_Position[0] = center[0];
-					m_Position[2] = center[2];
+					m_Radius = 0;
 
-					//! Find a radius that encompasses the outer edges
+				#ifdef DIAG_DEVELOPER
+				#ifndef SERVER
+					color = COLOR_WHITE;
+				#endif
+				#endif
+				}
 
-					for (i = 0; i < n; i++)
-					{
-						area = outermost[i];
+				m_Position[0] = center[0];
+				m_Position[2] = center[2];
 
-						dx = area.m_Position[0] - m_Position[0];
-						dz = area.m_Position[2] - m_Position[2];
+				//! Find a radius that encompasses the outer edges
 
-					#ifdef DIAG_DEVELOPER
-					#ifndef SERVER
-						dir[0] = dx;
-						dir[2] = dz;
-						point = area.m_Position + dir.Normalized() * area.m_Radius;
-						m_DebugShapes.Insert(Debug.DrawArrow(point, point + Vector(0, m_PositiveHeight + 10, 0), 0.5, COLOR_GREEN));
-					#endif
-					#endif
+				for (i = 0; i < count; i++)
+				{
+					area = m_Areas[i];
 
-						float distanceToEdge = Math.Sqrt(dx * dx + dz * dz) + area.m_Radius;
+					dx = area.m_Position[0] - m_Position[0];
+					dz = area.m_Position[2] - m_Position[2];
 
-						m_Radius = Math.Max(m_Radius, distanceToEdge);
-					}
+				#ifdef DIAG_DEVELOPER
+				#ifndef SERVER
+					dir[0] = dx;
+					dir[2] = dz;
+					point = area.m_Position + dir.Normalized() * area.m_Radius;
+					m_DebugShapes.Insert(Debug.DrawArrow(point, point + Vector(0, m_PositiveHeight + 10, 0), 0.5, COLOR_GREEN));
+				#endif
+				#endif
+
+					float distanceToEdge = Math.Sqrt(dx * dx + dz * dz) + area.m_Radius;
+
+					m_Radius = Math.Max(m_Radius, distanceToEdge);
 				}
 			}
 			else
 			{
 				//! Exactly two
 
-				center = (a + b) * 0.5;
+				float radius = Math.Sqrt(distSqAB) * 0.5;
+
+				if (areaA.m_Radius > radius)
+				{
+					center = areaA.m_Position;
+					radius = areaA.m_Radius;
+
+				#ifdef DIAG_DEVELOPER
+				#ifndef SERVER
+					color = COLOR_YELLOW;
+				#endif
+				#endif
+				}
+				else if (areaB.m_Radius > radius)
+				{
+					center = areaB.m_Position;
+					radius = areaB.m_Radius;
+
+				#ifdef DIAG_DEVELOPER
+				#ifndef SERVER
+					color = COLOR_YELLOW;
+				#endif
+				#endif
+				}
+				else
+				{
+					center = (a + b) * 0.5;
+
+				#ifdef DIAG_DEVELOPER
+				#ifndef SERVER
+					color = COLOR_WHITE;
+				#endif
+				#endif
+				}
 
 				m_Position[0] = center[0];
 				m_Position[2] = center[2];
 
-				m_Radius = Math.Sqrt(distSqAB) * 0.5;
+				m_Radius = radius;
 			}
+
+		#ifdef DIAG_DEVELOPER
+		#ifndef SERVER
+			m_DebugShapes.Insert(Debug.DrawArrow(m_Position, m_Position + Vector(0, m_PositiveHeight + 20, 0), 0.5, color));
+		#endif
+		#endif
 		}
 		else
 		{
-			m_Radius = m_Areas[0].m_Radius;
+			m_Position = area.m_Position;
+			m_Radius = area.m_Radius;
 		}
+
+		m_Updated = true;
 
 	#ifdef DIAG_DEVELOPER
 		EXTrace.Print(EXTrace.AI, null, string.Format("  %1 (pos=%2 radius=%3 nheight=%4 pheight=%5) {", ExpansionStatic.GetDebugInfo(this), m_Position.ToString(), m_Radius, m_NegativeHeight, m_PositiveHeight));
@@ -484,6 +619,51 @@ class ExpansionEffectAreaMergedCluster
 	#ifdef DIAG_DEVELOPER
 		DrawDebug();
 	#endif
+	}
+
+	void RemoveNonOverlappingAndUpdate()
+	{
+	#ifdef EXTRACE_DIAG
+		auto trace = EXTrace.Start(EXTrace.AI, this);
+	#endif
+
+		int count = m_Areas.Count();
+
+		EffectArea area;
+		EffectArea other;
+
+		bool overlap;
+
+		m_Updated = false;
+
+		for (int i = count - 1; i >= 1; i--)
+		{
+			area = m_Areas[i];
+
+			overlap = false;
+
+			for (int j = i - 1; j >= 0; j--)
+			{
+				other = m_Areas[j];
+
+				if (area.Expansion_IsOverlapping(other))
+				{
+					overlap = true;
+					break;
+				}
+			}
+
+			if (!overlap)
+			{
+				m_Areas.Remove(i);
+				EffectArea.s_Expansion_DangerousAreas.RemoveItemUnOrdered(area);
+				EXTrace.Print(EXTrace.AI, this, "Removed non-overlapping " + area);
+				EffectArea.s_Expansion_DangerousAreas.UpdateClusters(area);
+			}
+		}
+
+		if (!m_Updated)
+			Update();
 	}
 
 #ifdef DIAG_DEVELOPER

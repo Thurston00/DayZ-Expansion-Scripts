@@ -85,23 +85,18 @@ class ExpansionMonitorModule: CF_ModuleWorld
 
 	void RPC_SyncStats(PlayerIdentity sender, Object target, ParamsReadContext ctx)
 	{
+		if (!m_ClientStats)
+			return;
+
 		m_ClientStats.OnRecieve(ctx, true, false);
-/*
-		m_ClientStats.m_Distance = GetGame().GetPlayer().StatGet(AnalyticsManagerServer.STAT_DISTANCE);
-		m_ClientStats.m_Playtime = GetGame().GetPlayer().StatGet(AnalyticsManagerServer.STAT_PLAYTIME);
-		m_ClientStats.m_PlayersKilled = GetGame().GetPlayer().StatGet(AnalyticsManagerServer.STAT_PLAYERS_KILLED);
-	#ifdef ENFUSION_AI_PROJECT
-		m_ClientStats.m_AIKilled = GetGame().GetPlayer().StatGet(AnalyticsManagerServer.EXP_STAT_AI_PLAYERS_KILLED);
-	#endif
-		m_ClientStats.m_InfectedKilled = GetGame().GetPlayer().StatGet(AnalyticsManagerServer.STAT_INFECTED_KILLED);
-		m_ClientStats.m_AnimalsKilled = GetGame().GetPlayer().StatGet(AnalyticsManagerServer.EXP_STAT_ANIMALS_KILLED);
-		m_ClientStats.m_LongestShot = GetGame().GetPlayer().StatGet(AnalyticsManagerServer.STAT_LONGEST_SURVIVOR_HIT);
-*/
 		m_StatsInvoker.Invoke(m_ClientStats);
 	}
 
 	void RPC_SyncStates(PlayerIdentity sender, Object target, ParamsReadContext ctx)
 	{
+		if (!m_ClientStates)
+			return;
+		
 		m_ClientStates.OnRecieve(ctx);
 		m_StatesInvoker.Invoke(m_ClientStates);
 	}

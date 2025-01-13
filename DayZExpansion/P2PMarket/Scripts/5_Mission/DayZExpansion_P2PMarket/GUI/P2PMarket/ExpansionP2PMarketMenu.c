@@ -1764,12 +1764,6 @@ class ExpansionP2PMarketMenu: ExpansionScriptViewMenu
 		
 		OnBrowseButtonClick();
 	}
-	
-	override bool CanClose()
-	{
-		bool canClose = !m_RequestsLocked;
-		return canClose;
-	}
 
 	void OnExitClick()
 	{

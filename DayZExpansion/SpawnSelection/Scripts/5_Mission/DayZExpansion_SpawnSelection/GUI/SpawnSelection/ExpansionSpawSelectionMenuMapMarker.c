@@ -37,7 +37,7 @@ class ExpansionSpawSelectionMenuMapMarker : ExpansionMapWidgetBase
 		if (m_RespawnModule)
 		{
 			int respawnCooldown = GetExpansionSettings().GetSpawn().GetCooldown(m_IsTerritory);
-			map<string, ref ExpansionRespawnDelayTimer> playerCooldowns = m_RespawnModule.m_PlayerRespawnDelays.GetElement(0);
+			ExpansionRespawnDelayTimers playerCooldowns = m_RespawnModule.m_PlayerRespawnDelays.GetElement(0);
 			if (playerCooldowns)
 			{
 				ExpansionRespawnDelayTimer timer = playerCooldowns[m_LocationKey];

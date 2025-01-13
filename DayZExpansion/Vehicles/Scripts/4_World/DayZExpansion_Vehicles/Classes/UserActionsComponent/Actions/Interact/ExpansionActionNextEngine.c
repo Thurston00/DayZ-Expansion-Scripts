@@ -32,16 +32,18 @@ class ExpansionActionNextEngine : ActionInteractBase
 
 	override bool ActionCondition(PlayerBase player, ActionTarget target, ItemBase item)
 	{
-		Human driver;
-		
+	#ifndef SERVER
+		if ( !player.IsCameraInsideVehicle() || CarDoor.Cast( target.GetObject() ) )
+			return false;
+	#endif
+
 		auto vehicle = ExpansionVehicle.Get(player);
 		if (vehicle)
 		{
 			if (vehicle.EngineGetCount() <= 1)
 				return false;
 
-			driver = vehicle.CrewMember(DayZPlayerConstants.VEHICLESEAT_DRIVER);
-			if (driver && driver == player)
+			if (vehicle.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
 				return true;
 		}
 

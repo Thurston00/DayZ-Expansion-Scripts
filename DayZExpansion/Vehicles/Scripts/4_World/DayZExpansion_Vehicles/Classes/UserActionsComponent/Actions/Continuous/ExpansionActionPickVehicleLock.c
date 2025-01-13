@@ -64,14 +64,14 @@ class ExpansionActionPickVehicleLock: ExpansionActionPickVehicleLockBase
 				pickLockChancePercent /= lockComplexity;
 
 			if ( GetExpansionSettings().GetLog().VehicleLockPicking )
-				GetExpansionSettings().GetLog().PrintLog("[VehicleLockPick] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " is attempting to pick lock on " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ") with " + action_data.m_MainItem.GetType() );
+				GetExpansionSettings().GetLog().PrintLog("[VehicleLockPick] Player \"{1:name}\" (id={1:id} pos={1:position}) is attempting to pick lock on {2:type} (id={2:persistent_id} pos={2:position}) with {3:type}", action_data.m_Player, vehicle.GetEntity(), action_data.m_MainItem);
 
 			if ( Math.RandomFloat( 0, 100 ) < pickLockChancePercent )
 			{
 				vehicle.ForceUnlock();
 
 				if ( GetExpansionSettings().GetLog().VehicleLockPicking )
-					GetExpansionSettings().GetLog().PrintLog( "[VehicleLockPick] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " picked lock on " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ") with " + action_data.m_MainItem.GetType() );
+					GetExpansionSettings().GetLog().PrintLog("[VehicleLockPick] Player \"{1:name}\" (id={1:id} pos={1:position}) picked lock on {2:type} (id={2:persistent_id} pos={2:position}) with {3:type}", action_data.m_Player, vehicle.GetEntity(), action_data.m_MainItem);
 			}
 			super.OnFinishProgressServer( action_data );
 		}

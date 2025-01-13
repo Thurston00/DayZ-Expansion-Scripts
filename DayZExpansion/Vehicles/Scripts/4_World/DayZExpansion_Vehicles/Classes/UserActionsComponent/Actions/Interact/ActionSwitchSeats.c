@@ -36,7 +36,7 @@ modded class ActionSwitchSeats
 					seat = "passenger";
 				}
 
-				GetExpansionSettings().GetLog().PrintLog("[VehicleEnter] Player " + action_data.m_Player.GetIdentity().GetName() + " [uid=" + action_data.m_Player.GetIdentity().GetId() + "] switched seats in vehicle " + vehicle.GetDisplayName() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ") to " + seat);
+				GetExpansionSettings().GetLog().PrintLog("[VehicleEnter] Player \"{1:name}\" (id={1:id}) switched seats in vehicle {2:name} (id={2:persistent_id} pos={2:position}) to " + seat, action_data.m_Player, vehicle.GetEntity());
 			}
 		}
 	}

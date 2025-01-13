@@ -362,6 +362,8 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 	{
 		int i;
 
+		s_CurrentEntity = entity;
+
 		//! 3) special treatment for weapons
 		Weapon_Base weapon;
 		if (Class.CastTo(weapon, entity))
@@ -799,6 +801,8 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 
 		int i;
 
+		s_CurrentEntity = entity;
+
 		//! 3) special treatment for weapons
 		Weapon_Base weapon;
 		if (Class.CastTo(weapon, entity))
@@ -1015,7 +1019,7 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 		return s_CurrentEntity;
 	}
 
-	static int IsCurrentEntity(EntityAI entity)
+	static bool IsCurrentEntity(EntityAI entity)
 	{
 		if (s_CurrentEntity == entity)
 			return true;
@@ -1032,10 +1036,23 @@ class ExpansionEntityStorageModule: CF_ModuleWorld
 		return s_CurrentRootEntity;
 	}
 
-	static int IsCurrentRootEntity(EntityAI entity)
+	static bool IsCurrentRootEntity(EntityAI entity)
 	{
 		if (s_CurrentRootEntity == entity)
 			return true;
+
+		return false;
+	}
+
+	static bool IsInCurrentHierarchy(EntityAI entity)
+	{
+		while (entity)
+		{
+			if (entity == s_CurrentRootEntity)
+				return true;
+
+			entity = entity.GetHierarchyParent();
+		}
 
 		return false;
 	}

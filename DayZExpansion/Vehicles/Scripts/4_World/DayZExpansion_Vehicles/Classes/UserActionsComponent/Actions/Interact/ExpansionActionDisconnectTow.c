@@ -37,15 +37,16 @@ class ExpansionActionDisconnectTow : ActionInteractBase
 
 	override bool ActionCondition(PlayerBase player, ActionTarget target, ItemBase item)
 	{
-		auto vehicle = ExpansionVehicle.Get(player);
-		if (vehicle)
-		{
-			if (vehicle.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
-			{
-				m_IsWinch = vehicle.IsHelicopter();
+	#ifndef SERVER
+		if ( !player.IsCameraInsideVehicle() || CarDoor.Cast( target.GetObject() ) )
+			return false;
+	#endif
 
-				return vehicle.IsTowing();
-			}
+		auto vehicle = ExpansionVehicle.Get(player);
+		if (vehicle && vehicle.CrewMemberIndex(player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
+		{
+			m_IsWinch = vehicle.IsHelicopter();
+			return vehicle.IsTowing();
 		}
 		return false;
 	}
@@ -55,18 +56,16 @@ class ExpansionActionDisconnectTow : ActionInteractBase
 		super.OnStartServer(action_data);
 
 		auto vehicle = ExpansionVehicle.Get(action_data.m_Player);
-		if (vehicle)
+		if (vehicle && vehicle.CrewMemberIndex(action_data.m_Player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
 		{
-			if (vehicle.CrewMemberIndex(action_data.m_Player) == DayZPlayerConstants.VEHICLESEAT_DRIVER)
+			vehicle.DestroyTow();
+			if (GetExpansionSettings().GetLog().VehicleTowing)
 			{
-				vehicle.DestroyTow();
+				EntityAI towedEntity = vehicle.GetTowedEntity();
+				if (!towedEntity)
+					return;
 
-				if (GetGame().IsMultiplayer() && GetExpansionSettings().GetLog().VehicleTowing)
-				{
-					string msg = "[VehicleTowing] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " untowed " + vehicle.GetTowedEntity().GetType() + " (id=" + ExpansionStatic.GetPersistentIDString(vehicle.GetTowedEntity()) + " pos=" + vehicle.GetTowedEntity().GetPosition();
-					msg += " with " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")";
-					GetExpansionSettings().GetLog().PrintLog(msg);
-				}
+				GetExpansionSettings().GetLog().PrintLog("[VehicleTowing] Player \"{1:name}\" (id={1:id} pos={1:position}) untowed {2:type} (id={2:persistent_id} pos={2:position}) with {3:type} (id={3:persistent_id} pos={3:position})", action_data.m_Player, towedEntity, vehicle.GetEntity());
 			}
 		}
 	}

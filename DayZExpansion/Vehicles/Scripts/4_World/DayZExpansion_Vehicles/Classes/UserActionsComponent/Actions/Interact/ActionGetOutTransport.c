@@ -98,7 +98,7 @@ modded class ActionGetOutTransport
 
 		if (vehicle && action_data.m_Player && action_data.m_Player.GetIdentity() && GetExpansionSettings().GetLog().VehicleLeave)
 		{
-			GetExpansionSettings().GetLog().PrintLog("[VehicleLeave] Player " + action_data.m_Player.GetIdentity().GetName() + " [uid=" + action_data.m_Player.GetIdentity().GetId() + "] left vehicle " + vehicle.GetDisplayName() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")");
+			GetExpansionSettings().GetLog().PrintLog("[VehicleLeave] Player \"{1:name}\" (id={1:id}) left vehicle {2:name} (id={2:persistent_id} pos={2:position})", action_data.m_Player, vehicle.GetEntity());
 		}
 	}
 };

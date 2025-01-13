@@ -53,10 +53,14 @@ class ExpansionSpawnLocation
 
 	string GetKey()
 	{
-		string key = Positions[0].ToString();
+		string key;
 
 		if (TerritoryID != -1)
-			key += "|" + TerritoryID.ToString();
+			key = "T=" + TerritoryID.ToString();
+		else
+			key = "N=" + Name;
+
+		key += "|" + ExpansionStatic.VectorToString(Positions[0], ExpansionVectorToString.Plain);
 
 		return key;
 	}

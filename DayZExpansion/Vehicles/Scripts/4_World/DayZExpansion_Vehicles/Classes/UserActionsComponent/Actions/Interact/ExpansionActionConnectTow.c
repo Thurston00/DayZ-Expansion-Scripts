@@ -181,6 +181,11 @@ class ExpansionActionConnectTow : ActionInteractBase
 		if (!super.ActionCondition(player, target, item))
 			return false;
 
+	#ifndef SERVER
+		if ( !player.IsCameraInsideVehicle() || CarDoor.Cast( target.GetObject() ) )
+			return false;
+	#endif
+
 		Object toTow;
 		int index;
 		return GetObjectToTow(player, toTow, index);
@@ -201,9 +206,7 @@ class ExpansionActionConnectTow : ActionInteractBase
 
 				if (GetGame().IsMultiplayer() && GetExpansionSettings().GetLog().VehicleTowing)
 				{
-					string msg = "[VehicleTowing] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " towed " + action_data_b.m_ToTow.GetType() + " (id=" + ExpansionStatic.GetPersistentIDString(EntityAI.Cast(action_data_b.m_ToTow)) + " pos=" + action_data_b.m_ToTow.GetPosition();
-					msg += " with " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")";
-					GetExpansionSettings().GetLog().PrintLog(msg);
+					GetExpansionSettings().GetLog().PrintLog("[VehicleTowing] Player \"{1:name}\" (id={1:id} pos={1:position}) towed {2:type} (id={2:persistent_id} pos={2:position}) with {3:type} (id={3:persistent_id} pos={3:position})", action_data.m_Player, action_data_b.m_ToTow, vehicle.GetEntity());
 				}
 			}
 		}

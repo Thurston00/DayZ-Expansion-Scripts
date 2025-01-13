@@ -384,4 +384,9 @@ class ExpansionLogSettings: ExpansionSettingBase
 			CloseFile(m_FileLog);
 		}
 	}
+
+	void PrintLog(string fmt, Class p1, Class p2 = null, Class p3 = null, Class p4 = null, Class p5 = null, Class p6 = null, Class p7 = null, Class p8 = null, Class p9 = null)
+	{
+		PrintLog(ExpansionStatic.FormatString(fmt, p1, p2, p3, p4, p5, p6, p7, p8, p9));
+	}
 };

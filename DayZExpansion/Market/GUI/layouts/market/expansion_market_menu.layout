@@ -2243,7 +2243,7 @@ FrameWidgetClass ExpansionMarketMenu {
             ScrollWidgetClass skin_selector_container {
              visible 0
              clipchildren 1
-             ignorepointer 1
+             ignorepointer 0
              color 0 0 0 1
              position -0.2411 1
              size 1 299.14001

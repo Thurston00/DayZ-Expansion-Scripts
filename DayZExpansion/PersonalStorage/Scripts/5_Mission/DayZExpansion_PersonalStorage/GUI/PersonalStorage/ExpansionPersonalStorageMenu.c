@@ -1420,12 +1420,6 @@ class ExpansionPersonalStorageMenu: ExpansionScriptViewMenu
 			break;
 		}
 	}
-
-	override bool CanClose()
-	{
-		bool canClose = !m_RequestsLocked;
-		return canClose;
-	}
 	
 	void OnExitClick()
 	{

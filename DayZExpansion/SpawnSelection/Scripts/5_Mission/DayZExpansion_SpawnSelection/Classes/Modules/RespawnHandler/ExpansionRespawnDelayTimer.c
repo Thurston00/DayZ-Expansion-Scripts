@@ -94,3 +94,23 @@ class ExpansionRespawnDelayTimer
 		return true;
 	}
 }
+
+class ExpansionRespawnDelayTimers: map<string, ref ExpansionRespawnDelayTimer>
+{
+	void RemoveExpiredCooldowns()
+	{
+		TStringArray toDelete = {};
+
+		foreach (ExpansionRespawnDelayTimer playerTimer: this)
+		{
+			if (!playerTimer.HasCooldown())
+				toDelete.Insert(playerTimer.Key);
+		}
+
+		foreach (string key: toDelete)
+		{
+			Remove(key);
+			EXTrace.Print(EXTrace.SPAWNSELECTION, this, "Removed expired cooldown " + key);
+		}
+	}
+}

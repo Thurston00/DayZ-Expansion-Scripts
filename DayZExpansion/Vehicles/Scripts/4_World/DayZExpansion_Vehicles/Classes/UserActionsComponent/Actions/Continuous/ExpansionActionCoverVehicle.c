@@ -103,9 +103,9 @@ class ExpansionActionCoverVehicle: ActionContinuousBase
 		if (GetExpansionSettings().GetLog().VehicleCover)
 		{
 			if (result)
-				GetExpansionSettings().GetLog().PrintLog("[VehicleCover] Player \"%1\" (id=%2 pos=%3) covered vehicle \"%4\" (GlobalID=%5 pos=%6)!", action_data.m_Player.GetIdentity().GetName(), action_data.m_Player.GetIdentity().GetId(), action_data.m_Player.GetPosition().ToString(), type, id, placeholder.GetPosition().ToString());
+				GetExpansionSettings().GetLog().PrintLog("[VehicleCover] Player \"{1:name}\" (id={1:id} pos={1:position}) covered vehicle \"{2}\" (GlobalID={3} pos={4:position})!", action_data.m_Player, new ExpansionPrimitiveT<string>(type), new ExpansionPrimitiveT<string>(id), placeholder);
 			else
-				GetExpansionSettings().GetLog().PrintLog("[VehicleCover] ERROR: Player \"%1\" (id=%2 pos=%3) tried to cover vehicle \"%4\" (GlobalID=%5 pos=%6) but it failed!", action_data.m_Player.GetIdentity().GetName(), action_data.m_Player.GetIdentity().GetId(), action_data.m_Player.GetPosition().ToString(), type, id, entity.GetPosition().ToString());
+				GetExpansionSettings().GetLog().PrintLog("[VehicleCover] ERROR: Player \"{1:name}\" (id={1:id} pos={1:position}) tried to cover vehicle \"{2:type}\" (GlobalID={3} pos={2:position}) but it failed!", action_data.m_Player, entity, new ExpansionPrimitiveT<string>(id));
 		}
 	}
 }

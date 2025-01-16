@@ -22,7 +22,7 @@ static const string EXPANSION_HARDLINE_SETTINGS = EXPANSION_MISSION_SETTINGS_FOL
 class ExpansionHardlineItemRarityColor
 {
 	static const int Poor = ARGB(255, 157, 157, 157);
-	static const int Common = ARGB(255, 255, 255, 255);
+	static const int Common = ARGB(255, 128, 128, 128);
 	static const int Uncommon = ARGB(255, 30, 255, 0);
 	static const int Rare = ARGB(255, 0, 112, 221);
 	static const int Epic = ARGB(255, 163, 53, 238);

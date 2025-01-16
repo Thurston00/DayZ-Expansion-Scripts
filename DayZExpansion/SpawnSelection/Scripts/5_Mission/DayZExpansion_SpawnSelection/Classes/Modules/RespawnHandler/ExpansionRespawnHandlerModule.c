@@ -47,13 +47,13 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 	protected string s_FileName;
 	ref map<string, ref ExpansionPlayerState> m_PlayerStartStates;
 	bool m_SpawnSelected;
-	ref map<string, ref map<string, ref ExpansionRespawnDelayTimer>> m_PlayerRespawnDelays;
+	ref map<string, ref ExpansionRespawnDelayTimers> m_PlayerRespawnDelays;
 	ref map<string, ref ExpansionLastPlayerSpawnLocation> m_PlayerLastSpawnLocation;
 
 	void ExpansionRespawnHandlerModule()
 	{
 		m_PlayerStartStates = new map<string, ref ExpansionPlayerState>;
-		m_PlayerRespawnDelays = new map<string, ref map<string, ref ExpansionRespawnDelayTimer>>;
+		m_PlayerRespawnDelays = new map<string, ref ExpansionRespawnDelayTimers>;
 		m_PlayerLastSpawnLocation = new map<string, ref ExpansionLastPlayerSpawnLocation>;
 	}
 	
@@ -365,7 +365,7 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 			string cooldownIndex;
 			int respawnCooldown = GetExpansionSettings().GetSpawn().GetCooldown(isTerritory);
 			string playerUID = sender.GetId();
-			map<string, ref ExpansionRespawnDelayTimer> playerCooldowns = m_PlayerRespawnDelays[playerUID];
+			ExpansionRespawnDelayTimers playerCooldowns = m_PlayerRespawnDelays[playerUID];
 			if (playerCooldowns)
 			{					
 				ExpansionRespawnDelayTimer timer = playerCooldowns[locKey];
@@ -903,9 +903,11 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 		FileSerializer file = new FileSerializer;
 		if (file.Open(cooldownsFile, FileMode.WRITE))
 		{
-			map<string, ref ExpansionRespawnDelayTimer> playerCooldowns = m_PlayerRespawnDelays[playerUID];
+			ExpansionRespawnDelayTimers playerCooldowns = m_PlayerRespawnDelays[playerUID];
 			if (playerCooldowns)
 			{
+				playerCooldowns.RemoveExpiredCooldowns();
+
 				file.Write(playerCooldowns.Count());
 				foreach (string key, ExpansionRespawnDelayTimer playerTimer: playerCooldowns)
 				{
@@ -972,7 +974,7 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 		
 		bool hasCooldownEntry = false;
 		//! Check if player has a exiting cooldown entry for this spawn point key
-		map<string, ref ExpansionRespawnDelayTimer> playerCooldowns = m_PlayerRespawnDelays[playerUID];
+		ExpansionRespawnDelayTimers playerCooldowns = m_PlayerRespawnDelays[playerUID];
 		if (playerCooldowns)
 		{
 			ExpansionRespawnDelayTimer timer = playerCooldowns[key];
@@ -1007,7 +1009,7 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 		{
 			if (!playerCooldowns)
 			{
-				playerCooldowns = new map<string, ref ExpansionRespawnDelayTimer>;
+				playerCooldowns = new ExpansionRespawnDelayTimers;
 				m_PlayerRespawnDelays.Insert(playerUID, playerCooldowns);
 			}
 			playerCooldowns.Insert(key, new ExpansionRespawnDelayTimer(key, isTerritory));
@@ -1041,10 +1043,10 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 		if (!GetGame().IsServer() && !GetGame().IsMultiplayer())
 			return;
 
-		map<string, ref ExpansionRespawnDelayTimer> playerCooldowns = m_PlayerRespawnDelays[playerUID];
+		ExpansionRespawnDelayTimers playerCooldowns = m_PlayerRespawnDelays[playerUID];
 		if (!playerCooldowns)
 		{
-			playerCooldowns = new map<string, ref ExpansionRespawnDelayTimer>;
+			playerCooldowns = new ExpansionRespawnDelayTimers;
 			m_PlayerRespawnDelays.Insert(playerUID, playerCooldowns);
 		}
 
@@ -1067,7 +1069,12 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 						playerTimer = new ExpansionRespawnDelayTimer("");
 						if (playerTimer.ReadFrom(file))
 						{
-							playerCooldowns.Insert(playerTimer.Key, playerTimer);
+							if (!playerTimer.Key)
+								EXError.Error(this, "Player " + playerUID + " cooldown has an empty key!");
+							else if (playerTimer.HasCooldown())
+								playerCooldowns.Insert(playerTimer.Key, playerTimer);
+							else
+								EXTrace.Print(EXTrace.SPAWNSELECTION, this, "Discarded expired cooldown " + playerTimer.Key);
 						}
 						else
 						{
@@ -1149,7 +1156,7 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 		}
 
 		m_PlayerRespawnDelays.Clear();
-		map<string, ref ExpansionRespawnDelayTimer> timers = new map<string, ref ExpansionRespawnDelayTimer>;
+		ExpansionRespawnDelayTimers timers = new ExpansionRespawnDelayTimers;
 		PlayerBase player = PlayerBase.Cast(GetGame().GetPlayer());
 		string playerUID = player.GetIdentityUID();
 		m_PlayerRespawnDelays.Insert(playerUID, timers);
@@ -1166,7 +1173,13 @@ class ExpansionRespawnHandlerModule: CF_ModuleWorld
 
 			//! Correct for difference between client and server clock
 			timer.Timestamp += now - timer.Now;
-			timers.Insert(timer.Key, timer);
+
+			if (!timer.Key)
+				EXError.Error(this, "Player cooldown has an empty key!");
+			else if (timers.Contains(timer.Key))
+				EXError.Error(this, "Player cooldown with key \"" + timer.Key + "\" is already present!");
+			else
+				timers.Insert(timer.Key, timer);
 		}
 
 		bool hasLastSpawnLoc;

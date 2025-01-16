@@ -2044,6 +2044,241 @@ class ExpansionStatic: ExpansionStaticCore
 		return str;
 	}
 
+	/**
+	 * @brief Advanced string formatting
+	 * 
+	 * @param fmt  Format string. Can use special format parameters in the form {<n>:<property_name>}
+	 *  <n>               parameter number (1..9)
+	 *  :<property_name>  optional parameter property name, can be one of:
+	 *    name            player's identity name if param is a player and has identity, else display name if object, else classname
+     *    id              player's identity ID if param is a player and has identity, else object network ID formatted as lowercase hex
+     *                    for better readability if object, else the param's instance ID (the part between "<>" in "Object<380e60b0>")
+     *    global_id       object global ID as lowercase hex if param is object and param has global ID, else 0
+     *    identity_id     player's identity ID if param is a player, else 0
+     *    instance_id     param instance ID (the part between "<>" in "Object<380e60b0>").
+     *    network_id      object network ID as lowercase hex if param is object, else 0
+     *    persistent_id   entity persistent ID as lowercase hex if param is entity, else 0
+     *    classname       param classname
+     *    type            object GetType() if param is object, else an error is thrown
+     *    position        object position if param is object, else an error is thrown
+     *    orientation     object orientation if param is object, else an error is thrown
+     * 
+     * @param p1..p9      Parameter values. Note if you want to pass in primitives like bool, int, float, string or vector,
+     *                    you need to wrap them in ExpansionPrimitiveT
+	 * 
+	 * @return formatted string
+	 *
+	 * @code
+	 * 	Man player = GetGame().GetPlayer();
+	 *	string test = ExpansionStatic.FormatString("Player {1} \"{1:name}\" (id={1:id} pos={1:position})", player);
+	 * 	Print(test);	
+	 * 	>> test = 'Player DayZPlayer<4461795a> "ClientA" (id=XoIwo96...= pos=<7500, 0, 7500>)'
+	 * @endcode
+	 */
+	static string FormatString(string fmt, Class p1 = null, Class p2 = null, Class p3 = null, Class p4 = null, Class p5 = null, Class p6 = null, Class p7 = null, Class p8 = null, Class p9 = null)
+	{
+		string output;
+
+		int tokenStart;
+		int tokenEnd = -1;
+		string tokenPayload;
+		string propertyName;
+		Class p;
+
+		while (true)
+		{
+			tokenStart = fmt.IndexOfFrom(tokenEnd + 1, "{");
+
+			if (tokenStart > -1)
+			{
+				output += fmt.Substring(tokenEnd + 1, tokenStart - tokenEnd - 1);
+
+				tokenEnd = fmt.IndexOfFrom(tokenStart, "}");
+
+				if (tokenEnd > -1)
+				{
+					tokenPayload = fmt.Substring(tokenStart + 1, tokenEnd - tokenStart - 1);
+				}
+				else
+				{
+					output += fmt.Substring(tokenStart, fmt.Length() - tokenStart);
+					break;
+				}
+			}
+			else
+			{
+				output += fmt.Substring(tokenEnd + 1, fmt.Length() - tokenEnd - 1);
+				break;
+			}
+
+			switch (tokenPayload[0].ToInt())
+			{
+				case 1:
+					p = p1;
+					break;
+				case 2:
+					p = p2;
+					break;
+				case 3:
+					p = p3;
+					break;
+				case 4:
+					p = p4;
+					break;
+				case 5:
+					p = p5;
+					break;
+				case 6:
+					p = p6;
+					break;
+				case 7:
+					p = p7;
+					break;
+				case 8:
+					p = p8;
+					break;
+				case 9:
+					p = p9;
+					break;
+
+				default:
+					p = null;
+					break;
+			}
+
+			if (tokenPayload.Length() > 1 && p)
+			{
+				if (tokenPayload[1] != ":")
+				{
+					EXError.Error(null, "Invalid token " + tokenPayload);
+					continue;
+				}
+
+				propertyName = tokenPayload.Substring(2, tokenPayload.Length() - 2);
+
+				EntityAI entity;
+				Man player;
+				Object obj;
+				int lowBits, highBits;
+
+				switch (propertyName)
+				{
+					case "name":
+						if (Class.CastTo(player, p) && player.GetIdentity())
+							output += player.GetIdentity().GetName();
+						else if (Class.CastTo(obj, p))
+							output += obj.GetDisplayName();
+						else
+							output += p.ClassName();
+						break;
+
+					case "classname":
+						output += p.ClassName();
+						break;
+
+					case "id":
+						if (Class.CastTo(player, p) && player.GetIdentity())
+						{
+							output += player.GetIdentity().GetId();
+						}
+						else if (Class.CastTo(obj, p))
+						{
+							obj.GetNetworkID(lowBits, highBits);
+							output += IntToHex(highBits);
+							output += IntToHex(lowBits);
+						}
+						else
+						{
+							output += GetInstanceID(p);
+						}
+						break;
+
+					case "identity_id":
+						if (Class.CastTo(player, p) && player.GetIdentity())
+							output += player.GetIdentity().GetId();
+						else
+							output += "0";
+						break;
+
+					case "network_id":
+						if (Class.CastTo(obj, p))
+						{
+							obj.GetNetworkID(lowBits, highBits);
+							output += IntToHex(highBits);
+							output += IntToHex(lowBits);
+						}
+						else
+						{
+							output += "0";
+						}
+						break;
+
+					case "instance_id":
+						output += GetInstanceID(p);
+						break;
+
+					case "global_id":
+						ExpansionGlobalID globalID;
+						EnScript.GetClassVar(p, "m_Expansion_GlobalID", 0, globalID);
+						if (globalID)
+							output += globalID.IDToHex();
+						else
+							output += "0";
+						break;
+
+					case "persistent_id":
+						if (Class.CastTo(entity, p))
+							output += GetPersistentIDString(entity);
+						else
+							output += "0";
+						break;
+
+					case "type":
+						if (Class.CastTo(obj, p))
+							output += obj.GetType();
+						else
+							EXError.Error(null, p.ToString() + " is not an object");
+						break;
+
+					case "position":
+						if (Class.CastTo(obj, p))
+							output += VectorToString(obj.GetPosition());
+						else
+							EXError.Error(null, p.ToString() + " is not an object");
+						break;
+
+					case "orientation":
+						if (Class.CastTo(obj, p))
+							output += VectorToString(obj.GetOrientation());
+						else
+							EXError.Error(null, p.ToString() + " is not an object");
+						break;
+
+					default:
+						EXError.Error(null, "Invalid property name " + tokenPayload);
+						break;
+				}
+			}
+			else
+			{
+				ExpansionPrimitive primitive;
+				if (Class.CastTo(primitive, p))
+				{
+					if (primitive.GetValueType() == vector)
+						output += VectorToString(ExpansionPrimitiveT<vector>.Cast(primitive).GetValue());
+					else
+						output += primitive.ToString(false, false, false);
+				}
+				else
+				{
+					output += p.ToString();
+				}
+			}
+		}
+
+		return output;
+	}
+
 	static bool Key_SHIFT()
 	{
 		return( ( KeyState( KeyCode.KC_LSHIFT ) > 0 ) || ( KeyState( KeyCode.KC_RSHIFT ) > 0 ) );

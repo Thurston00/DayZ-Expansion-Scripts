@@ -417,6 +417,7 @@ class eAIDynamicPatrol : eAIPatrol
 			if (waypoint == m_Position)
 			{
 				m_Group.m_CurrentWaypointIndex = idx;
+				m_Group.m_CurrentWaypoint = waypoint;
 				if (idx != 0 && Math.RandomIntInclusive(0, 1))
 					m_Group.m_BackTracking = true;
 			}

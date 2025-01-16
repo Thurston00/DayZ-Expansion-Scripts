@@ -38,7 +38,7 @@ modded class ActionStopEngineBoat
 				vehicle.EngineStop();
 
 			if (action_data.m_Player.GetIdentity() && GetExpansionSettings().GetLog().VehicleEngine)
-				GetExpansionSettings().GetLog().PrintLog("[VehicleEngine] Player " + action_data.m_Player.GetIdentity().GetName() + " [uid=" + action_data.m_Player.GetIdentity().GetId() + "] stopped vehicle " + vehicle.GetDisplayName() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")");
+				GetExpansionSettings().GetLog().PrintLog("[VehicleEngine] Player \"{1:name}\" (id={1:id}) stopped vehicle {2:name} (id={2:persistent_id} pos={2:position})", action_data.m_Player, vehicle.GetEntity());
 		}
 	}
 

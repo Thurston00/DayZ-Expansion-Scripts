@@ -33,6 +33,25 @@ class eAIBase: PlayerBase
 	static float s_eAI_LastCEUpdateTime;
 	static ref set<Object> s_eAI_TakenCoverObjects = new set<Object>;
 
+	//! model name w/o .p3d ext, can be partial
+	static ref TStringArray s_eAI_PreventClimb = {
+		"pole",
+		"sign",
+		"busstop",
+		"rock",
+		"stairs",
+		"farm_strawstack"
+	};
+
+	//! model name w/o .p3d ext, can be partial
+	static ref TStringArray s_eAI_PreventClimbOver = {
+		"container",
+		"tank_small",
+		"misc_haybale",
+		"misc_woodreserve",
+		"misc_advertcolumn"
+	};
+
 	private ref eAICallbacks m_eAI_Callbacks = new eAICallbacks(this);
 
 	protected autoptr eAIFSM m_FSM;
@@ -3156,7 +3175,43 @@ class eAIBase: PlayerBase
 			ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " Expansion_OnDangerousAreaEnterServer " + area.m_Expansion_MergedCluster + " " + area.m_Expansion_MergedCluster.m_Position + " " + area.m_Expansion_MergedCluster.m_Radius);
 		#endif
 
-			GetGroup().RandomizeDangerousAreaAvoidanceDirection();
+			ExpansionEffectAreaMergedCluster cluster = area.m_Expansion_MergedCluster;
+			EffectArea closestArea;
+			vector position = GetPosition();
+			vector target = m_PathFinding.GetTarget();
+			vector left = target;
+			vector right = target;
+
+			cluster.FindClosestPointOutsideCluster(position, left, 1.0, true, closestArea, this);
+			cluster.FindClosestPointOutsideCluster(position, right, -1.0, true, closestArea, this);
+
+			float distToTargetLeft = vector.DistanceSq(left, target);
+			float distToTargetRight = vector.DistanceSq(right, target);
+
+			if (distToTargetLeft < distToTargetRight)
+			{
+				GetGroup().m_DangerousAreaAvoidanceDirection = 1.0;
+
+			#ifdef DIAG_DEVELOPER
+				ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " Expansion_OnDangerousAreaEnterServer avoid left");
+			#endif
+			}
+			else if (distToTargetLeft > distToTargetRight)
+			{
+				GetGroup().m_DangerousAreaAvoidanceDirection = -1.0;
+
+			#ifdef DIAG_DEVELOPER
+				ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " Expansion_OnDangerousAreaEnterServer avoid right");
+			#endif
+			}
+			else
+			{
+				GetGroup().RandomizeDangerousAreaAvoidanceDirection();
+
+			#ifdef DIAG_DEVELOPER
+				ExpansionStatic.MessageNearPlayers(GetPosition(), 1000, ToString() + " Expansion_OnDangerousAreaEnterServer avoid random");
+			#endif
+			}
 		}
 
 		m_eAI_EffectArea = area;
@@ -4600,6 +4655,9 @@ class eAIBase: PlayerBase
 
 	override void CommandHandler(float pDt, int pCurrentCommandID, bool pCurrentCommandFinished)
 	{
+		if (!GetGame())
+			return;
+
 #ifdef EAI_TRACE
 		auto trace = CF_Trace_3(this, "CommandHandler").Add(pDt).Add(pCurrentCommandID).Add(pCurrentCommandFinished);
 #endif
@@ -7004,10 +7062,11 @@ class eAIBase: PlayerBase
 		auto trace = EXTrace.Start(EXTrace.AI, this, "" + item);
 #endif 
 
-		eAI_UpdateVisitedBuildings();
-
 		if (!item)
 			return false;
+
+		if (item.GetHierarchyRoot() != this)  //! Item not in AI inventory, so we are looting
+			eAI_UpdateVisitedBuildings();
 
 		EntityAI hands = GetHumanInventory().GetEntityInHands();
 		if (hands)
@@ -7125,10 +7184,11 @@ class eAIBase: PlayerBase
 		auto trace = EXTrace.Start(EXTrace.AI, this, "" + item);
 #endif 
 
-		eAI_UpdateVisitedBuildings();
-
 		if (!item)
 			return false;
+
+		if (item.GetHierarchyRoot() != this)  //! Item not in AI inventory, so we are looting
+			eAI_UpdateVisitedBuildings();
 
 		InventoryLocation il_dst;
 
@@ -7815,7 +7875,8 @@ class eAIBase: PlayerBase
 				string debugName = object.GetDebugName();
 				debugName.ToLower();
 
-				if ((debugName.Contains("container") || debugName.Contains("tank_small") || debugName.Contains("misc_haybale") || debugName.Contains("misc_woodreserve")) && climbRes.m_bIsClimbOver)
+				//! Things we should never attempt to vault
+				if (climbRes.m_bIsClimbOver && ExpansionString.ContainsAny(debugName, s_eAI_PreventClimbOver))
 				{
 					if (EXTrace.AI)
 						EXTrace.Print(true, this, "eAI_CanClimbOn false " + Debug.GetDebugName(parent) + " is scenery? " + object.IsScenery() + " is plain? " + object.IsPlainObject());
@@ -7824,7 +7885,7 @@ class eAIBase: PlayerBase
 				}
 
 				//! @note AI should NEVER climb rocks, it can make them "fall into" the rock and through the map
-				if (debugName.Contains("pole") || debugName.Contains("sign") || debugName.Contains("busstop") || debugName.Contains("rock") || object.IsRock() || debugName.Contains("stairs") || debugName.Contains("farm_strawstack"))
+				if (object.IsRock() || ExpansionString.ContainsAny(debugName, s_eAI_PreventClimb))
 				{
 					if (EXTrace.AI)
 						EXTrace.Print(true, this, "eAI_CanClimbOn false " + Debug.GetDebugName(parent) + " is scenery? " + object.IsScenery() + " is plain? " + object.IsPlainObject());
@@ -7937,7 +7998,7 @@ class eAIBase: PlayerBase
 		
 		if (waterDepth > 1.5 && ExpansionStatic.SurfaceIsWater(waterCheckPosition))
 			isFallSafe = true;  //! Falling into water that is deep enough for swimming is safe
-		else if (fallHeight <= DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW || (GetHealth01() - Math.InverseLerp(DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW, DayZPlayerImplementFallDamage.HEALTH_HEIGHT_HIGH, fallHeight) >= 0.7))
+		else if (fallHeight <= DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW || (GetHealth01() - Math.InverseLerp(DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW, DayZPlayerImplementFallDamage.HEALTH_HEIGHT_HIGH, fallHeight) >= 0.85))
 			isFallSafe = true;
 
 	#ifdef DIAG_DEVELOPER
@@ -7971,12 +8032,16 @@ class eAIBase: PlayerBase
 
 		vector position = m_ExTransformPlayer[3];
 		float fallHeight = position[1] - m_eAI_SurfaceY;
+
+		if (fallHeight < DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW)
+			return false;
+
 		vector surfacePosition = Vector(position[0], m_eAI_SurfaceY, position[2]);
 		float waterDepth = Math.Max(GetGame().GetWaterDepth(surfacePosition), 0.0);
-		if (fallHeight - waterDepth > DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW)
-			return true;
+		if (fallHeight - waterDepth < DayZPlayerImplementFallDamage.HEALTH_HEIGHT_LOW)
+			return false;
 
-		return false;
+		return true;
 	}
 
 	void eAI_JumpOrClimb()
@@ -8091,13 +8156,23 @@ class eAIBase: PlayerBase
 						}
 					}
 				}
+
+				if (!building.CanDoorBeClosed(doorIndex))
+				{
+					break;
+				}
 			}
 			else if (!isEnterable)
 			{
 				//! Do not open doors on structures that cannot be entered, e.g. wrecks (less chance of getting stuck on them when closed)
 				break;
 			}
-			else if (building.IsDoorLocked(doorIndex))
+			//! @note vanilla Building::CanDoorBeOpened is implemented awkardly: If you pass `true` in the 2nd argument (`checkIfLocked`),
+			//! then it will return false if the door is closed and locked.
+			//! But if you pass in `false` for `checkIfLocked` (which is also the default), then it will return false if the door is
+			//! closed and *not* locked, which is unexpected.
+			//! The only reason we use it to begin with is because mods can override it.
+			else if (building.IsDoorLocked(doorIndex) && building.CanDoorBeOpened(doorIndex, false))
 			{
 				if (building.GetAllowDamage())
 				{
@@ -8105,6 +8180,14 @@ class eAIBase: PlayerBase
 					auto info = building.eAI_GetDoorTargetInformation(doorIndex, building.GetDoorSoundPos(doorIndex));
 					info.AddAI(this);
 				}
+
+				break;
+			}
+			else if (!building.CanDoorBeOpened(doorIndex, true))
+			{
+				//! If door cannot be opened and path is blocked, stop moving
+				if (m_PathFinding.m_IsBlocked)
+					m_PathFinding.m_IsUnreachable = true;
 
 				break;
 			}
@@ -8179,7 +8262,7 @@ class eAIBase: PlayerBase
 	{
 		if (GetGroup().GetWaypointBehaviour() == eAIWaypointBehavior.ROAMING && GetGroup().GetFormationLeader() == this)
 		{
-			vector begPos = GetPosition() + "0 1.5 0";
+			vector begPos = GetPosition() - "0 0.1 0";  //! Start raycast slightly under ground in case building has no roof
 			//! Raycast up instead of down because not all buildings have floors (e.g. sheds)
 			//! Raycast height is chosen so that it can still hit ceiling of Land_Cementworks_Hall2 from floor
 			vector endPos = GetPosition() + "0 11 0";
@@ -8196,6 +8279,9 @@ class eAIBase: PlayerBase
 					if (Class.CastTo(building, obj))
 					{
 						GetGroup().m_VisitedBuildings.Insert(building);
+					#ifdef DIAG_DEVELOPER
+						EXTrace.Print(EXTrace.AI, this, "Looted " + ExpansionStatic.GetDebugInfo(building));
+					#endif
 						break;
 					}
 				}

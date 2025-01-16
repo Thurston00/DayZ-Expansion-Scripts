@@ -60,7 +60,7 @@ class ExpansionActionAdminUnpairKey: ActionInteractBase
 			keys[i].Unpair( true );
 
 		if ( GetExpansionSettings().GetLog().AdminTools )
-			GetExpansionSettings().GetLog().PrintLog("[AdminTools] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " used the Admin CarKey to unpair " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")" );
+			GetExpansionSettings().GetLog().PrintLog("[AdminTools] Player \"{1:name}\" (id={1:id} pos={1:position}) used the Admin CarKey to unpair {2:type} (id={2:persistent_id} pos={2:position})", action_data.m_Player, vehicle.GetEntity());
 
 		vehicle.ResetKeyPairing();
 	}

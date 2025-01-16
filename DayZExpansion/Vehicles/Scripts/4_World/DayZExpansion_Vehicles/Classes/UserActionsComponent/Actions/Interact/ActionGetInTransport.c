@@ -230,7 +230,7 @@ modded class ActionGetInTransport
 				seat = "passenger";
 			}
 
-			GetExpansionSettings().GetLog().PrintLog("[VehicleEnter] Player " + action_data.m_Player.GetIdentity().GetName() + " [uid=" + action_data.m_Player.GetIdentity().GetId() + "] entered vehicle " + vehicle.GetDisplayName() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ") as " + seat);
+			GetExpansionSettings().GetLog().PrintLog("[VehicleEnter] Player \"{1:name}\" (id={1:id}) entered vehicle {2:name} (id={2:persistent_id} pos={2:position}) as " + seat, action_data.m_Player, vehicle.GetEntity());
 		}
 	}
 };

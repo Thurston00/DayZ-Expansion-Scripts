@@ -102,9 +102,9 @@ class ExpansionActionUnlockVehicle: ActionInteractBase
 			vehicle.Unlock( key );
 	
 			if ( GetExpansionSettings().GetLog().AdminTools && key && key.IsInherited( ExpansionCarAdminKey ) )
-				GetExpansionSettings().GetLog().PrintLog("[AdminTools] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " used the  "+ key.GetType() +" to unlock " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")");
+				GetExpansionSettings().GetLog().PrintLog("[AdminTools] Player \"{1:name}\" (id={1:id} pos={1:position}) used {2:type} to unlock {3:type} (id={3:persistent_id} pos={3:position})", action_data.m_Player, key, vehicle.GetEntity());
 			else if ( GetExpansionSettings().GetLog().VehicleCarKey && key )
-				GetExpansionSettings().GetLog().PrintLog("[VehicleCarKey] Player \"" + action_data.m_Player.GetIdentity().GetName() + "\" (id=" + action_data.m_Player.GetIdentity().GetId() + " pos=" + action_data.m_Player.GetPosition() + ")" + " used the  "+ key.GetType() +" to unlock " + vehicle.GetType() + " (id=" + vehicle.GetPersistentIDString() + " pos=" + vehicle.GetPosition() + ")");
+				GetExpansionSettings().GetLog().PrintLog("[VehicleCarKey] Player \"{1:name}\" (id={1:id} pos={1:position}) used {2:type} to unlock {3:type} (id={3:persistent_id} pos={3:position})", action_data.m_Player, key, vehicle.GetEntity());
 		}
 	}
 

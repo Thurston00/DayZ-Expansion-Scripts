@@ -920,6 +920,10 @@ class ExpansionPathHandler
 			float len = checkDirection.Length();
 			if (!m_Unit.eAI_IsFallSafe(checkDirection.Normalized() * (len + 2.0), 1339))
 			{
+			#ifdef DIAG_DEVELOPER
+				if (!m_IsUnreachable)
+					EXTrace.Print(EXTrace.AI, this, m_Unit.ToString() + " unreachable (not fall safe)");
+			#endif
 				m_IsUnreachable = true;
 				m_IsTargetUnreachable = true;
 				return false;
